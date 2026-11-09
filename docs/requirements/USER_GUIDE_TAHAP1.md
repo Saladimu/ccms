@@ -18,6 +18,9 @@ Panduan ini adalah *checklist* praktis dan urutan kerja bagi Anda untuk menyiapk
 
 ### 1. Persiapan Akun & Cloud (Prasyarat)
 - [ ] **Akun Gmail Khusus Gereja**: Pastikan Anda menggunakan satu akun Gmail khusus (bukan akun pribadi) sebagai pemilik sistem.
+- [ ] **Aktifkan Apps Script API (PENTING)**: 
+  - Buka [script.google.com/home/usersettings](https://script.google.com/home/usersettings) menggunakan akun Gmail gereja Anda.
+  - Aktifkan toggle **Google Apps Script API** menjadi **ON**. *(Jika baru diaktifkan, tunggu 1–2 menit agar propagasi Google selesai sebelum menjalankan `clasp`).*
 - [ ] **Aktifkan 2FA**: Aktifkan *2-Step Verification* pada akun Gmail tersebut dan simpan nomor pemulihan/email pemulihan gereja.
 - [ ] **Akun Cloudflare**: Pastikan Anda memiliki akun Cloudflare gratis yang aktif untuk menghosting Pages dan Worker.
 - [ ] **Node.js terinstal**: Pastikan di komputer lokal Anda terinstal Node.js dan npm (untuk menjalankan Wrangler dan clasp).
