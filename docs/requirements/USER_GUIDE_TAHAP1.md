@@ -55,10 +55,13 @@ Langkah ini membuat spreadsheet database, tabel, dan akun Super Admin awal.
   ```
 - [ ] **Deploy sebagai Web App (Pertama kali)**:
   ```bash
-  clasp deploy -m "Release Tahap 1 Awal"
+  clasp deploy --description "Release Tahap 1 Awal"
   ```
+  *(Gunakan `--description`, bukan `-m`. Flag `-m` tidak didukung oleh `clasp deploy`.)*
   *(Atau deploy melalui browser: Buka [script.google.com](https://script.google.com) → Pilih project CCMS Backend (DEV) → Deploy → New deployment → Pilih jenis **Web app**: Execute as: **Me**, Who has access: **Anyone**).*
-- [ ] **Salin URL Web App (`.../exec`)**: Simpan URL ini untuk dimasukkan ke Cloudflare Worker nanti.
+- [ ] **Catat URL Web App yang dihasilkan**:
+  Output `clasp deploy` akan menampilkan URL format `https://script.google.com/macros/s/.../exec`.
+  **Salin dan simpan URL ini** untuk dimasukkan ke `wrangler.toml` pada langkah Setup API Gateway.
 - [ ] **Jalankan Setup Database**:
   - Di editor Apps Script online (`script.google.com`), buka file `tools/SetupDatabase.gs`.
   - Pilih fungsi `setupDatabase` pada dropdown, lalu klik **Run**.
