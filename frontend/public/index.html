@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Church Community Management System</title>
+  <style>
+    :root {
+      --primary: #1b4332;
+      --secondary: #d4af37;
+      --bg: #f8f9fa;
+      --text: #212529;
+      --card-bg: #ffffff;
+    }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+    }
+    header {
+      background-color: var(--primary);
+      color: white;
+      padding: 1rem;
+      text-align: center;
+    }
+    header h1 { margin: 0; font-size: 1.5rem; }
+    header p { margin: 0.3rem 0 0; opacity: 0.85; font-size: 0.9rem; }
+    nav {
+      display: flex;
+      justify-content: center;
+      gap: 0.5rem;
+      background-color: #2d6a4f;
+      padding: 0.5rem;
+      flex-wrap: wrap;
+    }
+    nav a {
+      color: white;
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+    nav a.active, nav a:hover {
+      background-color: var(--secondary);
+      color: #000;
+    }
+    main {
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+    .card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      padding: 1.5rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      margin-bottom: 1.5rem;
+    }
+    footer {
+      text-align: center;
+      padding: 2rem;
+      color: #6c757d;
+      font-size: 0.85rem;
+    }
+    .loading { text-align: center; padding: 2rem; color: #666; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 id="church-name">CCMS Portal</h1>
+    <p id="church-tagline">Church Community Management System</p>
+  </header>
+
+  <nav id="public-nav">
+    <!-- Menu dinamis dirender di sini oleh JS -->
+  </nav>
+
+  <main id="app">
+    <div class="loading">Memuat informasi...</div>
+  </main>
+
+  <footer>
+    <p>&copy; <span id="year"></span> <span id="footer-church">CCMS</span></p>
+  </footer>
+
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // API Gateway Worker
+    const API_BASE = '/api';
+
+    async function loadPortal() {
+      try {
+        const res = await fetch(`${API_BASE}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'public.info' })
+        });
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error ? json.error.message : 'Gagal memuat portal');
+
+        const data = json.data;
+        if (data.church.name) {
+          document.getElementById('church-name').textContent = data.church.name;
+          document.getElementById('footer-church').textContent = data.church.name;
+        }
+        if (data.church.tagline) {
+          document.getElementById('church-tagline').textContent = data.church.tagline;
+        }
+
+        // Render Nav
+        const nav = document.getElementById('public-nav');
+        nav.innerHTML = '';
+        data.menus.forEach(m => {
+          const a = document.createElement('a');
+          a.href = `#${m.key}`;
+          a.textContent = m.label;
+          a.onclick = (e) => { e.preventDefault(); navigateTo(m.key); };
+          nav.appendChild(a);
+        });
+
+        // Default page
+        navigateTo('home');
+      } catch (err) {
+        document.getElementById('app').innerHTML = `
+          <div class="card">
+            <h2>Selamat Datang</h2>
+            <p>Church Community Management System sedang disiapkan.</p>
+          </div>`;
+      }
+    }
+
+    async function navigateTo(menuKey) {
+      const app = document.getElementById('app');
+      app.innerHTML = '<div class="loading">Memuat halaman...</div>';
+
+      // Mark active nav
+      document.querySelectorAll('#public-nav a').forEach(a => {
+        a.classList.toggle('active', a.getAttribute('href') === `#${menuKey}`);
+      });
+
+      try {
+        const res = await fetch(`${API_BASE}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'public.page', payload: { menu_key: menuKey } })
+        });
+        const json = await res.json();
+        if (!json.ok) {
+          app.innerHTML = `<div class="card"><h2>Informasi</h2><p>${json.error.message}</p></div>`;
+          return;
+        }
+
+        const data = json.data;
+        if (data.status === 'MAINTENANCE') {
+          app.innerHTML = `<div class="card"><h2>Pemeliharaan</h2><p>${data.message}</p></div>`;
+          return;
+        }
+
+        app.innerHTML = `
+          <div class="card">
+            <h2>${menuKey.toUpperCase()}</h2>
+            <p>${data.data && data.data.message ? data.data.message : 'Konten halaman publik.'}</p>
+          </div>`;
+      } catch (err) {
+        app.innerHTML = `<div class="card"><h2>Error</h2><p>Gagal memuat konten.</p></div>`;
+      }
+    }
+
+    loadPortal();
+  </script>
+</body>
+</html>

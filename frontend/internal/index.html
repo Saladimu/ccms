@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CCMS — Aplikasi Pengurus</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f4f6f9;
+      color: #333;
+    }
+    .login-box {
+      max-width: 360px;
+      margin: 100px auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .login-box h2 { margin-top: 0; color: #1b4332; text-align: center; }
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; margin-bottom: 0.4rem; font-size: 0.9rem; }
+    .form-group input {
+      width: 100%;
+      padding: 0.6rem;
+      box-sizing: border-box;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      width: 100%;
+      padding: 0.7rem;
+      background: #1b4332;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    button:hover { background: #2d6a4f; }
+    .error-msg { color: #d9534f; font-size: 0.85rem; margin-top: 0.5rem; text-align: center; }
+
+    /* Dashboard Layout */
+    .dashboard { display: none; }
+    .sidebar { width: 220px; background: #1b4332; color: white; position: fixed; top: 0; bottom: 0; left: 0; padding: 1rem; }
+    .sidebar h3 { margin-top: 0; border-bottom: 1px solid #2d6a4f; padding-bottom: 0.5rem; }
+    .sidebar a { display: block; color: #d8f3dc; text-decoration: none; padding: 0.5rem 0; font-size: 0.95rem; }
+    .sidebar a:hover { color: white; }
+    .main-content { margin-left: 240px; padding: 2rem; }
+    .top-bar { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e0e0e0; padding-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <div id="login-screen" class="login-box">
+    <h2>CCMS Internal</h2>
+    <form id="login-form">
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="username" required autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="password" required autocomplete="current-password">
+      </div>
+      <button type="submit" id="btn-login">Masuk</button>
+      <div id="login-error" class="error-msg"></div>
+    </form>
+  </div>
+
+  <div id="dashboard-screen" class="dashboard">
+    <div class="sidebar">
+      <h3>CCMS Internal</h3>
+      <div id="nav-items">
+        <!-- Dynamic Nav by Role -->
+      </div>
+      <br>
+      <a href="#" id="btn-logout" style="color: #ff8787;">Keluar</a>
+    </div>
+
+    <div class="main-content">
+      <div class="top-bar">
+        <h2 id="page-title">Dashboard</h2>
+        <div>
+          <span id="user-display">Pengguna</span>
+        </div>
+      </div>
+      <div id="dashboard-content" style="margin-top: 1.5rem;">
+        <div style="background: white; padding: 1.5rem; border-radius: 8px;">
+          <h3>Selamat datang di Internal CCMS</h3>
+          <p>Anda masuk sebagai: <strong id="user-role-badge">-</strong></p>
+          <div id="perm-list" style="font-size: 0.85rem; color: #666;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '/api';
+    let token = localStorage.getItem('ccms_token') || '';
+
+    const loginScreen = document.getElementById('login-screen');
+    const dashboardScreen = document.getElementById('dashboard-screen');
+
+    document.getElementById('login-form').onsubmit = async (e) => {
+      e.preventDefault();
+      const errDiv = document.getElementById('login-error');
+      errDiv.textContent = '';
+      const btn = document.getElementById('btn-login');
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(`${API_BASE}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'auth.login',
+            payload: {
+              username: document.getElementById('username').value,
+              password: document.getElementById('password').value
+            }
+          })
+        });
+        const json = await res.json();
+        if (!json.ok) {
+          errDiv.textContent = json.error ? json.error.message : 'Gagal login';
+          return;
+        }
+
+        token = json.data.token;
+        localStorage.setItem('ccms_token', token);
+        showDashboard(json.data.user);
+      } catch (err) {
+        errDiv.textContent = 'Terjadi kesalahan jaringan.';
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    document.getElementById('btn-logout').onclick = async (e) => {
+      e.preventDefault();
+      try {
+        await fetch(`${API_BASE}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'auth.logout', token })
+        });
+      } catch(e){}
+      token = '';
+      localStorage.removeItem('ccms_token');
+      dashboardScreen.style.display = 'none';
+      loginScreen.style.display = 'block';
+    };
+
+    async function checkSession() {
+      if (!token) return;
+      try {
+        const res = await fetch(`${API_BASE}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'auth.me', token })
+        });
+        const json = await res.json();
+        if (json.ok) {
+          showDashboard(json.data);
+        } else {
+          token = '';
+          localStorage.removeItem('ccms_token');
+        }
+      } catch(e){}
+    }
+
+    function showDashboard(user) {
+      loginScreen.style.display = 'none';
+      dashboardScreen.style.display = 'block';
+
+      document.getElementById('user-display').textContent = `${user.full_name} (@${user.username})`;
+      document.getElementById('user-role-badge').textContent = user.roles.join(', ');
+      document.getElementById('perm-list').textContent = 'Permissions: ' + user.permissions.join(', ');
+
+      const nav = document.getElementById('nav-items');
+      nav.innerHTML = '<a href="#">Dashboard</a>';
+
+      if (user.permissions.includes('USER_MANAGE')) {
+        nav.innerHTML += '<a href="#">Pengguna & Role</a>';
+      }
+      if (user.permissions.includes('MENU_CONFIG') || user.permissions.includes('SYSTEM_CONFIG')) {
+        nav.innerHTML += '<a href="#">Pengaturan Sistem</a>';
+      }
+      if (user.permissions.includes('AUDIT_VIEW')) {
+        nav.innerHTML += '<a href="#">Audit Log</a>';
+      }
+    }
+
+    checkSession();
+  </script>
+</body>
+</html>

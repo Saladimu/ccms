@@ -1,0 +1,21 @@
+name = "ccms-api"
+main = "src/index.js"
+compatibility_date = "2026-11-09"
+
+# Konfigurasi per environment (dev/staging/prod).
+# GAS_URL  : URL deploy Google Apps Script (per environment).
+# ALLOWED_ORIGINS : JSON array origin frontend yang diizinkan (CORS).
+[vars]
+GAS_URL = "https://script.google.com/macros/s/DEPLOY_ID/exec"
+ALLOWED_ORIGINS = '["https://ccms-public.pages.dev","https://ccms-internal.pages.dev"]'
+
+# Untuk environment lain:
+#   wrangler deploy --env staging
+# dan tambahkan blok di bawah (contoh):
+#
+# [env.staging.vars]
+# GAS_URL = "https://script.google.com/macros/s/DEPLOY_ID_STAGING/exec"
+# ALLOWED_ORIGINS = '["https://ccms-staging.pages.dev"]'
+
+# [env.production.vars]
+# GAS_URL = "https://script.google.com/macros/s/DEPLOY_ID_PROD/exec"
