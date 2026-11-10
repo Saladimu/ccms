@@ -27,8 +27,8 @@ export default {
         : [];
     const cors = corsHeaders(request.headers.get("Origin") || "", allowed);
 
-    // Hanya /api/* yang ditangani Worker. Halaman statis di-handle Cloudflare Pages.
-    if (!url.pathname.startsWith("/api/")) {
+    // Hanya /api dan /api/* yang ditangani Worker. Halaman statis di-handle Cloudflare Pages.
+    if (!url.pathname.startsWith("/api") && url.pathname !== "/api") {
       return json({ ok: false, error: { code: "NOT_FOUND", message: "Endpoint tidak ditemukan" } }, 404, cors);
     }
 
@@ -59,9 +59,14 @@ export default {
 
     let upstreamJson;
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 55000);
       const upstream = await fetch(gasUrl, {
         method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        headers: { 
+          "Content-Type": "text/plain;charset=utf-8",
+          "User-Agent": request.headers.get("User-Agent") || "Mozilla/5.0 (compatible; CCMS-Worker)"
+        },
         body: JSON.stringify({
           action: payload ? payload.action : "public.info",
           payload: payload && payload.payload ? payload.payload : {},
@@ -72,9 +77,15 @@ export default {
           },
         }),
         redirect: "follow",
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       upstreamJson = await upstream.json();
     } catch (e) {
+      clearTimeout(timeout);
+      if (e.name === 'AbortError') {
+        return json({ ok: false, error: { code: "UPSTREAM_TIMEOUT", message: "Backend timeout, coba lagi" } }, 504, cors);
+      }
       return json({ ok: false, error: { code: "UPSTREAM_ERROR", message: "Backend tidak dapat dihubungi" } }, 502, cors);
     }
 
