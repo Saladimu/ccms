@@ -18,6 +18,8 @@
  *  - Token sesi dikirim di body (field meta.token), bukan cookie.
  *  - Cache hanya untuk action publik TANPA token. Response ber-token
  *    (auth.*, users.*, config.* dst.) TIDAK pernah di-cache.
+ *  - Pola cache: body dibaca SEKALI sebagai string, Response terpisah
+ *    dibangun untuk cache dan client (menghindari stream lock 500).
  */
 
 // Action yang boleh di-cache (publik, tanpa token, data jarang berubah)
@@ -64,44 +66,77 @@ export default {
     const action = payload ? payload.action : "public.info";
     const hasToken = !!(payload && payload.token);
 
-    // ---- P1-2: Cache untuk action publik tanpa token ----
+    // ---- Cache untuk action publik tanpa token ----
     if (CACHEABLE_ACTIONS.has(action) && !hasToken) {
       const cache = caches.default;
-      const cacheKey = "ccms:" + action + ":" + JSON.stringify((payload && payload.payload) || {});
-      try {
-        const cached = await cache.match(cacheKey);
-        if (cached) {
-          // Tandai cache hit + kirim ke client (sudah ada Cache-Control header)
-          const hit = cached.clone();
-          hit.headers.set("X-CCMS-Cache", "HIT");
-          return hit;
-        }
-      } catch (e) { /* cache read gagal → lanjut fetch */ }
+      // Cloudflare Cache API BUTUH Request object (bukan string key)
+      const cacheReq = new Request(request.url + '?__cache__=' + action + '&' + encodeURIComponent(JSON.stringify((payload && payload.payload) || {})));
 
-      // Cache miss → fetch dari backend, simpan hasilnya
-      const upstream = await fetchUpstream(env, payload, request);
-      if (upstream.response.status === 200) {
-        try {
-          const toStore = new Response(upstream.response.body, {
+      try {
+        const cached = await cache.match(cacheReq);
+        if (cached) {
+          const text = await cached.text();
+          return new Response(text, {
             status: 200,
-            headers: {
+            headers: Object.assign({
               "Content-Type": "application/json; charset=utf-8",
               "Cache-Control": "public, max-age=" + CACHE_TTL_SECONDS,
-            },
+              "X-CCMS-Cache": "HIT",
+            }, cors),
           });
-          await cache.put(cacheKey, toStore);
-        } catch (e) { /* simpan cache gagal → tetap kirim response */ }
+        }
+      } catch (e) {
+        console.error("CCMS cache MATCH error:", e && e.message ? e.message : e);
       }
-      const res = upstream.response.clone();
-      res.headers.set("X-CCMS-Cache", "MISS");
-      return res;
+
+      // Cache miss → fetch dari backend
+      const upstream = await fetchUpstream(env, payload, request);
+      const text = await upstream.response.text();
+
+      if (upstream.response.status === 200) {
+        try {
+          await cache.put(
+            cacheReq,
+            new Response(text, {
+              status: 200,
+              headers: {
+                "Content-Type": "application/json; charset=utf-8",
+                "Cache-Control": "public, max-age=" + CACHE_TTL_SECONDS,
+              },
+            })
+          );
+        } catch (e) {
+          console.error("CCMS cache PUT error:", e && e.message ? e.message : e);
+        }
+      }
+
+      return new Response(text, {
+        status: upstream.response.status,
+        headers: Object.assign(
+          {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "public, max-age=" + CACHE_TTL_SECONDS,
+            "X-CCMS-Cache": "MISS",
+          },
+          cors
+        ),
+      });
     }
 
     // ---- Action non-cacheable (internal/ber-token) ----
     const upstream = await fetchUpstream(env, payload, request);
-    const res = upstream.response.clone();
-    res.headers.set("X-CCMS-Cache", "BYPASS");
-    return res;
+    const text = await upstream.response.text();
+    return new Response(text, {
+      status: upstream.response.status,
+      headers: Object.assign(
+        {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-CCMS-Cache": "BYPASS",
+        },
+        cors
+      ),
+    });
   },
 };
 
@@ -156,14 +191,10 @@ async function fetchUpstream(env, payload, request) {
 }
 
 function json(body, status, cors) {
-  // P1-3: Cache-Control untuk data publik agar browser meng-cache
-  const isPublic = body && body.ok && body.data && !body.error;
-  const headers = Object.assign(
-    { "Content-Type": "application/json; charset=utf-8" },
-    cors || {},
-    isPublic ? { "Cache-Control": "public, max-age=60" } : { "Cache-Control": "no-store" }
-  );
-  return new Response(JSON.stringify(body), { status, headers });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: Object.assign({ "Content-Type": "application/json; charset=utf-8" }, cors || {}),
+  });
 }
 
 function corsHeaders(origin, allowed) {
