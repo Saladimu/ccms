@@ -1,55 +1,60 @@
 /**
  * Router — pemetaan action → handler + permission.
- *
- * Konvensi nama action: domain.verb (camelCase), contoh auth.login.
- * Route public: tidak butuh sesi.
- * Route lain: butuh sesi valid + permission (null = hanya butuh login).
+ * 
+ * PERBAIKAN: Definisi route dibuat LAZY (di dalam fungsi resolve)
+ * agar tidak bergantung pada urutan load file .gs di Apps Script.
  */
 
 var Router = (function () {
 
-  var PUBLIC = {
-    'public.info':   Public.info,          // identitas + menu publik (status ON saja)
-    'public.page':   Public.page,          // isi halaman publik per menu_key
-  };
+  // Mapping string action -> { module: 'NamaModul', handler: 'namaFungsi', permission: 'KODE_PERM' }
+  var ROUTE_MAP = {
+    // Public (tanpa login)
+    'public.info':   { module: 'Public',   handler: 'info',   permission: null, needsSession: false },
+    'public.page':   { module: 'Public',   handler: 'page',   permission: null, needsSession: false },
 
-  var AUTH = {
-    'auth.login':    null,                 // khusus: tidak butuh token, handled Auth.login
-  };
+    // Auth khusus
+    'auth.login':    { module: 'Auth',     handler: 'login',  permission: null, needsSession: false },
 
-  var PRIVATE = {
-    'auth.logout':        { handler: Auth.logout,        permission: null },
-    'auth.me':            { handler: Auth.me,            permission: null },
+    // Private (butuh session + permission)
+    'auth.logout':        { module: 'Auth',     handler: 'logout',        permission: null, needsSession: true },
+    'auth.me':            { module: 'Auth',     handler: 'me',            permission: null, needsSession: true },
 
-    'users.list':         { handler: Users.list,         permission: 'USER_MANAGE' },
-    'users.create':       { handler: Users.create,       permission: 'USER_MANAGE' },
-    'users.update':       { handler: Users.update,       permission: 'USER_MANAGE' },
-    'users.resetPassword':{ handler: Users.resetPassword,permission: 'USER_MANAGE' },
+    'users.list':         { module: 'Users',    handler: 'list',          permission: 'USER_MANAGE', needsSession: true },
+    'users.create':       { module: 'Users',    handler: 'create',        permission: 'USER_MANAGE', needsSession: true },
+    'users.update':       { module: 'Users',    handler: 'update',        permission: 'USER_MANAGE', needsSession: true },
+    'users.resetPassword':{ module: 'Users',    handler: 'resetPassword', permission: 'USER_MANAGE', needsSession: true },
 
-    'roles.list':         { handler: Users.listRoles,    permission: 'USER_MANAGE' },
-    'roles.assign':       { handler: Users.assignRole,   permission: 'USER_MANAGE' },
-    'roles.revoke':       { handler: Users.revokeRole,   permission: 'USER_MANAGE' },
+    'roles.list':         { module: 'Users',    handler: 'listRoles',     permission: 'USER_MANAGE', needsSession: true },
+    'roles.assign':       { module: 'Users',    handler: 'assignRole',    permission: 'USER_MANAGE', needsSession: true },
+    'roles.revoke':       { module: 'Users',    handler: 'revokeRole',    permission: 'USER_MANAGE', needsSession: true },
 
-    'menu.list':          { handler: PublicMenu.list,    permission: null },
-    'menu.setStatus':     { handler: PublicMenu.setStatus, permission: 'MENU_CONFIG' },
+    'menu.list':          { module: 'PublicMenu', handler: 'list',       permission: null, needsSession: true },
+    'menu.setStatus':     { module: 'PublicMenu', handler: 'setStatus',  permission: 'MENU_CONFIG', needsSession: true },
 
-    'config.get':         { handler: Config.apiGet,      permission: 'SYSTEM_CONFIG' },
-    'config.set':         { handler: Config.apiSet,      permission: 'SYSTEM_CONFIG' },
+    'config.get':         { module: 'Config',   handler: 'apiGet',       permission: 'SYSTEM_CONFIG', needsSession: true },
+    'config.set':         { module: 'Config',   handler: 'apiSet',       permission: 'SYSTEM_CONFIG', needsSession: true },
 
-    'audit.list':         { handler: Audit.list,         permission: 'AUDIT_VIEW' },
+    'audit.list':         { module: 'Audit',    handler: 'list',         permission: 'AUDIT_VIEW', needsSession: true },
   };
 
   function resolve(action) {
-    if (Object.prototype.hasOwnProperty.call(PUBLIC, action)) {
-      return { handler: PUBLIC[action], needsSession: false, permission: null };
+    var route = ROUTE_MAP[action];
+    if (!route) {
+      throw new AppError('UNKNOWN_ACTION', 'Action tidak dikenal: ' + action, 404);
     }
-    if (action === 'auth.login') {
-      return { handler: Auth.login, needsSession: false, permission: null };
+
+    // Resolve handler function dynamically from global scope at runtime
+    var mod = this[route.module]; // global object (Apps Script global scope)
+    if (!mod || typeof mod[route.handler] !== 'function') {
+      throw new AppError('INTERNAL_ERROR', 'Handler tidak ditemukan: ' + route.module + '.' + route.handler, 500);
     }
-    if (Object.prototype.hasOwnProperty.call(PRIVATE, action)) {
-      return { handler: PRIVATE[action].handler, needsSession: true, permission: PRIVATE[action].permission };
-    }
-    throw new AppError('UNKNOWN_ACTION', 'Action tidak dikenal: ' + action, 404);
+
+    return {
+      handler: mod[route.handler],
+      needsSession: route.needsSession,
+      permission: route.permission,
+    };
   }
 
   return { resolve: resolve };

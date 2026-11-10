@@ -104,7 +104,7 @@ function setupDatabase() {
   var envFolders = parent.getFoldersByName(envName);
   var envFolder = envFolders.hasNext() ? envFolders.next() : parent.createFolder(envName);
 
-  // Super Admin awal
+  // Super Admin awal - pakai Db.write untuk konsistensi
   var adminPassword = 'CCMS-' + Math.random().toString(36).slice(2, 10);
   var adminUserId = Db.newId('USR');
   var roles = ss.getSheetByName('ROLES').getDataRange().getValues();
@@ -113,13 +113,41 @@ function setupDatabase() {
     if (roles[i][1] === 'SUPER_ADMIN') superRoleId = roles[i][0];
   }
 
-  ss.getSheetByName('USERS').appendRow([
-    adminUserId, 'admin', Auth.hashPassword(adminPassword), 'Super Admin Awal', '', '',
-    true, true, '', 0, '', Db.now(), 'SYSTEM', Db.now(), 'SYSTEM',
-  ]);
-  ss.getSheetByName('USER_ROLES').appendRow([
-    Db.newId('UR'), adminUserId, superRoleId, Db.now(), 'SYSTEM',
-  ]);
+  Db.write('USERS', function () {
+    return {
+      append: [{
+        user_id: adminUserId,
+        username: 'admin',
+        password_hash: Auth.hashPassword(adminPassword),
+        full_name: 'Super Admin Awal',
+        email: '',
+        phone: '',
+        is_active: true,
+        must_change_password: true,
+        locked_until: '',
+        consecutive_failures: 0,
+        last_login_at: '',
+        created_at: Db.now(),
+        created_by: 'SYSTEM',
+        updated_at: Db.now(),
+        updated_by: 'SYSTEM',
+      }]
+    };
+  });
+
+  if (superRoleId) {
+    Db.write('USER_ROLES', function () {
+      return {
+        append: [{
+          user_role_id: Db.newId('UR'),
+          user_id: adminUserId,
+          role_id: superRoleId,
+          assigned_at: Db.now(),
+          assigned_by: 'SYSTEM',
+        }]
+      };
+    });
+  }
 
   Logger.log('====================================');
   Logger.log('CCMS setup selesai. ENV: ' + envName);

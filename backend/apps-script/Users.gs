@@ -164,9 +164,21 @@ var Users = (function () {
     userRoles.forEach(function (ur) { if (ur.user_id === userId && ur.role_id === roleId) targetUr = ur; });
 
     if (targetUr) {
-      // Hapus baris dengan mengosongkan ID (atau overwrite saat write)
+      // Hapus baris dengan mengosongkan semua field (soft delete)
       Db.write('USER_ROLES', function () {
-        return { update: [{ _row: targetUr._row, user_role_id: '', user_id: '', role_id: '' }] };
+        return { 
+          update: [{ 
+            _row: targetUr._row, 
+            user_role_id: '', 
+            user_id: '', 
+            role_id: '', 
+            assigned_at: '', 
+            assigned_by: '',
+            deleted: true,
+            deleted_at: Db.now(),
+            deleted_by: ctx.user.user_id
+          }] 
+        };
       });
     }
 

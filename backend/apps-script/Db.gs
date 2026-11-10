@@ -43,6 +43,7 @@ var Db = (function () {
   /**
    * Tulis aman: fn(rows) mengembalikan {append: [...], update: [{_row, ...}]}
    * dieksekusi dalam satu lock.
+   * PERBAIKAN: update sekarang merge dengan data existing, tidak overwrite kosong.
    */
   function write(sheetName, fn) {
     var lock = LockService.getScriptLock();
@@ -62,10 +63,18 @@ var Db = (function () {
       if (result.update && result.update.length) {
         var head2 = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
         result.update.forEach(function (u) {
-          var idx = head2.indexOf('_row') === -1 ? -1 : -1;
+          // Baca data existing row untuk di-merge dengan update
+          var existingRow = sh.getRange(u._row, 1, 1, head2.length).getValues()[0];
+          var existingObj = {};
+          for (var c = 0; c < head2.length; c++) {
+            existingObj[head2[c]] = existingRow[c];
+          }
+          // Merge: existing + update (update wins)
+          var merged = Object.assign({}, existingObj, u);
+          // Tulis merged row
           var rowVals = head2.map(function (col) {
             if (col === '_row') return u._row;
-            return u[col] !== undefined ? u[col] : '';
+            return merged[col] !== undefined ? merged[col] : '';
           });
           sh.getRange(u._row, 1, 1, head2.length).setValues([rowVals]);
         });
