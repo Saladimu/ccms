@@ -3,7 +3,7 @@
 **Versi:** 1.0
 **Tanggal:** 9 November 2026
 **Status:** Disetujui sebagai dasar implementasi Tahap 1
-**Sheet yang dicakup:** `CONFIG`, `PUBLIC_MENU`, `USERS`, `ROLES`, `PERMISSIONS`, `USER_ROLES`, `AUDIT_LOG`, `LOGIN_ATTEMPTS`
+**Sheet yang dicakup:** `CONFIG`, `PUBLIC_MENU`, `USERS`, `ROLES`, `PERMISSIONS`, `USER_ROLES`, `AUDIT_LOG`, `LOGIN_ATTEMPTS`, `REVOKED_SESSIONS`
 
 Sheet untuk Tahap 2 (jemaat/komisi/pengumuman) dan Tahap 3 (keuangan) akan didokumentasikan saat masing-masing tahap dimulai (mengikuti roadmap).
 
@@ -336,3 +336,19 @@ Permission Tahap 2/3 akan dimatikan secara fungsional hingga tahapnya dikerjakan
 6. Migrasi skema di masa depan: setiap perubahan kolom baru wajib lewat change log + update dokumen ini + versi data dictionary.
 
 **Akhir dokumen.**
+
+
+## 12. REVOKED_SESSIONS
+
+Ledger pencabutan sesi server-side untuk memenuhi ketentuan logout pada BRD §1.11.
+
+| Kolom | Tipe | Wajib | Aturan / Keterangan |
+|---|---|---|---|
+| `session_id` | STRING | Ya | ID sesi dari JWT `jti`; untuk JWT lama tanpa `jti`, backend menggunakan hash token sebagai ID transisi. |
+| `user_id` | STRING | Ya | FK → `USERS.user_id`. |
+| `revoked_at` | TIMESTAMP | Ya | Waktu logout/pencabutan sesi. |
+| `expires_at` | TIMESTAMP | Ya | Waktu kedaluwarsa token; digunakan untuk retensi dan pembersihan ledger. |
+
+Unik: `session_id`. Baris revocation tidak boleh dihapus sebelum token terkait kedaluwarsa. Pembersihan record expired dilakukan melalui prosedur maintenance server-side yang terpisah.
+
+**Migrasi database existing:** jalankan `migrateSessionRevocationSheet()` satu kali per environment setelah memverifikasi `CCMS_ENV`, `CCMS_SPREADSHEET_ID`, backup, dan persetujuan. Untuk PROD wajib set `CCMS_ALLOW_SCHEMA_MIGRATION=TRUE` hanya selama prosedur migrasi yang disetujui. Jangan jalankan migrasi production dari branch development tanpa rencana deployment dan backup.
