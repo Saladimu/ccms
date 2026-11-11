@@ -26,3 +26,6 @@ jobs:
           node-version: "20"
       - name: Run auth, RBAC, session and KDF tests
         run: node --test backend/tests/sit/*.test.cjs
+      - name: Run Worker gateway tests
+        working-directory: worker
+        run: node --test tests/*.test.js
