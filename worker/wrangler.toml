@@ -13,18 +13,18 @@ name = "ccms-api-dev"
 
 [env.dev.vars]
 GAS_URL = "CONFIGURE_DEV_GAS_URL"
-ALLOWED_ORIGINS = '["https://ccms-public-dev.pages.dev","https://ccms-internal-dev.pages.dev"]'
+ALLOWED_ORIGINS = '[]'
 
 [env.staging]
 name = "ccms-api-staging"
 
 [env.staging.vars]
 GAS_URL = "CONFIGURE_STAGING_GAS_URL"
-ALLOWED_ORIGINS = '["https://ccms-public-staging.pages.dev","https://ccms-internal-staging.pages.dev"]'
+ALLOWED_ORIGINS = '[]'
 
 [env.production]
 name = "ccms-api-production"
 
 [env.production.vars]
 GAS_URL = "CONFIGURE_PRODUCTION_GAS_URL"
-ALLOWED_ORIGINS = '["https://ccms-public.pages.dev","https://ccms-internal.pages.dev"]'
+ALLOWED_ORIGINS = '["https://ccms-public.pages.dev","https://ccms-internal.pages.dev","https://4d40e962.ccms-public.pages.dev","https://d77ae448.ccms-internal.pages.dev"]'
