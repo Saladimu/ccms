@@ -226,6 +226,57 @@ test('C-04 logout revokes the session and prevents token reuse', () => {
   assert.throws(() => context.Auth.verifyToken(token), e => e.code === 'UNAUTHORIZED');
 });
 
+
+test('C-05 authenticated password change clears first-login flag and revokes current session', () => {
+  setupRole('SUPER_ADMIN');
+  const oldPassword = 'InitialPass123';
+  tables.USERS[0] = {
+    _row: 2, user_id: 'USR-1', username: 'sit.user', full_name: 'SIT User',
+    is_active: true, must_change_password: true,
+    password_hash: context.Auth.hashPassword(oldPassword, 'd'.repeat(32), 10000),
+    consecutive_failures: 0, locked_until: null
+  };
+  const token = signedToken();
+  const response = context.doPost({ postData: { contents: JSON.stringify({
+    action: 'auth.changePassword',
+    payload: { current_password: oldPassword, new_password: 'ReplacementPass456' },
+    meta: { token }
+  }) } });
+  const body = JSON.parse(response.text);
+  assert.equal(body.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.data.must_change_password, false);
+  assert.equal(tables.USERS[0].must_change_password, false);
+  assert.equal(context.Auth.verifyPassword('ReplacementPass456', tables.USERS[0].password_hash), true);
+  assert.equal(tables.REVOKED_SESSIONS.length, 1);
+  assert.throws(() => context.Auth.verifyToken(token), e => e.code === 'UNAUTHORIZED');
+});
+
+test('C-05 password change rejects wrong current password and weak replacement', () => {
+  setupRole('SUPER_ADMIN');
+  tables.USERS[0] = {
+    _row: 2, user_id: 'USR-1', username: 'sit.user', full_name: 'SIT User',
+    is_active: true, must_change_password: true,
+    password_hash: context.Auth.hashPassword('InitialPass123', 'e'.repeat(32), 10000),
+    consecutive_failures: 0, locked_until: null
+  };
+  const token = signedToken();
+  const wrongCurrent = context.doPost({ postData: { contents: JSON.stringify({
+    action: 'auth.changePassword',
+    payload: { current_password: 'WrongPass123', new_password: 'ReplacementPass456' },
+    meta: { token }
+  }) } });
+  assert.equal(JSON.parse(wrongCurrent.text).status, 401);
+  const weakNew = context.doPost({ postData: { contents: JSON.stringify({
+    action: 'auth.changePassword',
+    payload: { current_password: 'InitialPass123', new_password: 'short' },
+    meta: { token }
+  }) } });
+  assert.equal(JSON.parse(weakNew.text).status, 400);
+  assert.equal(tables.USERS[0].must_change_password, true);
+  assert.equal(tables.REVOKED_SESSIONS.length, 0);
+});
+
 test('C-01 direct API authorization denies PASTOR user management but allows audit', () => {
   setupRole('PASTOR');
   const token = signedToken();
