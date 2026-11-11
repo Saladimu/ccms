@@ -48,6 +48,14 @@ function setupDatabase() {
     ['AI_PROVIDER', 'GEMINI', 'STRING', 'FALSE', 'Provider AI', Db.now(), 'SYSTEM'],
     ['AI_MODEL', '', 'STRING', 'FALSE', 'Model AI (isi Tahap 3)', Db.now(), 'SYSTEM'],
     ['AI_DAILY_LIMIT', '50', 'NUMBER', 'FALSE', 'Batas pemanggilan AI per hari', Db.now(), 'SYSTEM'],
+    ['CHURCH_HISTORY', '', 'STRING', 'FALSE', 'Ringkasan sejarah gereja untuk portal publik', Db.now(), 'SYSTEM'],
+    ['CHURCH_VISION', '', 'STRING', 'FALSE', 'Visi gereja untuk portal publik', Db.now(), 'SYSTEM'],
+    ['CHURCH_MISSION', '', 'STRING', 'FALSE', 'Misi gereja untuk portal publik', Db.now(), 'SYSTEM'],
+    ['PUBLIC_WORSHIP_SCHEDULE', '', 'STRING', 'FALSE', 'Informasi jadwal ibadah publik', Db.now(), 'SYSTEM'],
+    ['PUBLIC_ANNOUNCEMENTS_INFO', '', 'STRING', 'FALSE', 'Informasi pengumuman publik', Db.now(), 'SYSTEM'],
+    ['PUBLIC_EVENTS_INFO', '', 'STRING', 'FALSE', 'Informasi kegiatan dan kalender publik', Db.now(), 'SYSTEM'],
+    ['PUBLIC_MINISTRY_INFO', '', 'STRING', 'FALSE', 'Informasi komisi dan pelayanan publik', Db.now(), 'SYSTEM'],
+    ['PUBLIC_CONTACT_HOURS', '', 'STRING', 'FALSE', 'Jam layanan/kontak gereja', Db.now(), 'SYSTEM'],
   ]);
 
   createSheet(ss, 'PUBLIC_MENU', ['menu_id', 'menu_key', 'menu_label', 'parent_menu_id', 'url_path', 'status', 'sort_order', 'updated_at', 'updated_by'], [
@@ -57,6 +65,7 @@ function setupDatabase() {
     [Db.newId('MENU'), 'events', 'Kegiatan', '', '/kegiatan', 'ON', 4, Db.now(), 'SYSTEM'],
     [Db.newId('MENU'), 'profile', 'Profil Gereja', '', '/profil', 'ON', 5, Db.now(), 'SYSTEM'],
     [Db.newId('MENU'), 'contact', 'Kontak', '', '/kontak', 'ON', 6, Db.now(), 'SYSTEM'],
+    [Db.newId('MENU'), 'ministries', 'Komisi & Pelayanan', '', '/komisi-pelayanan', 'ON', 7, Db.now(), 'SYSTEM'],
   ]);
 
   createSheet(ss, 'USERS', ['user_id', 'username', 'password_hash', 'full_name', 'email', 'phone', 'is_active', 'must_change_password', 'locked_until', 'consecutive_failures', 'last_login_at', 'created_at', 'created_by', 'updated_at', 'updated_by'], []);
