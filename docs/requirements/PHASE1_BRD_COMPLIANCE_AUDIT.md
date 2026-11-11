@@ -262,3 +262,26 @@ Karena itu:
 - Smoke test production read-only disetujui, tetapi hasil percobaan saat ini terhalang keterbatasan DNS/konektivitas alat.
 - UAT belum dijadwalkan. Saat disusun nanti, UAT dashboard minimal melibatkan dua role berbeda; pemilihan role dan perwakilan gereja dibahas terpisah.
 - Belum ada perubahan source aplikasi, konfigurasi production, atau data produksi.
+
+
+## 12. Audit lanjutan — sesi, konfigurasi, dan data access
+
+Pemeriksaan tambahan terhadap frontend internal dan modul konfigurasi menemukan beberapa hal berikut.
+
+| ID | Area | Temuan source | Risiko / dampak | Rekomendasi |
+|---|---|---|---|---|
+| S-01 | Session logout | Frontend mengirim `auth.logout` dan menghapus token dari `localStorage`; backend hanya menulis audit log. | Penghapusan token di browser tidak membatalkan salinan token lain. Token lama tetap valid sampai expiry. | Terapkan revocation server-side dan uji token replay setelah logout. |
+| S-02 | Deaktivasi akun | `Users.update` dapat mengubah `is_active`, tetapi `Code.gs` memvalidasi token lalu menghitung role tanpa memeriksa status aktif akun pada setiap request. | Akun yang dinonaktifkan berpotensi tetap memakai sesi yang telah diterbitkan sampai token kedaluwarsa. | Pada setiap request privat, pastikan user masih ada dan `is_active=true`; cabut seluruh sesi saat akun dinonaktifkan. |
+| S-03 | Config validation | `Config.apiSet` memeriksa key ada dan melarang `SESSION_SECRET`, tetapi menulis nilai sebagai string tanpa validasi berdasarkan `value_type` atau daftar key yang boleh diubah. | Nilai boolean/number/enum dapat diisi tidak valid dan mengganggu perilaku runtime. | Validasi tipe, enum, panjang, dan izin perubahan per key di backend; jangan mengandalkan UI. |
+| S-04 | Audit log detail | `Config.apiSet` menulis nilai konfigurasi baru ke detail audit (`to: value`). | Jika suatu key sensitif ditambahkan di masa depan, nilainya berpotensi tersimpan dalam audit log. | Redaksi nilai sensitif; catat nama key dan metadata perubahan tanpa menyimpan secret. |
+| S-05 | Public content rendering | `frontend/public/index.html` memasukkan beberapa nilai response ke `innerHTML`, termasuk pesan maintenance/konten halaman. | Jika nilai konfigurasi atau konten kelak berisi HTML/script tidak tepercaya, dapat membuka risiko stored/reflected XSS. | Gunakan DOM API dan `textContent` untuk teks; sanitasi HTML hanya bila rich text memang diperlukan. |
+| S-06 | UI role-based | Dashboard saat ini hanya menampilkan link placeholder untuk Dashboard, Pengguna & Role, Pengaturan Sistem, dan Audit Log berdasarkan permission. | Ini baru skeleton; link belum menjadi modul operasional. | Tetap klasifikasikan sebagai dashboard parsial; validasi backend tetap menjadi otoritas izin. |
+
+### Catatan positif
+
+- Frontend mengirim token sebagai field top-level `token`; Worker meneruskannya ke Apps Script sebagai `meta.token`, sesuai kontrak `Code.gs`.
+- `Config.apiGet` menyamarkan nilai yang ditandai `is_secret=TRUE`.
+- `Db.write` memakai ScriptLock untuk operasi append/update.
+- `Users.list` tidak mengembalikan `password_hash`.
+
+Temuan di atas adalah review source, bukan bukti eksploitasi atau hasil penetration test. Risiko perlu dikonfirmasi melalui test terkontrol sebelum implementasi remediasi.
