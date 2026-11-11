@@ -102,3 +102,21 @@ Data Dictionary Tahap 1 §10 ternyata **sudah memiliki matriks Role → Permissi
 **Peringatan migrasi:** perubahan logout memerlukan sheet `REVOKED_SESSIONS`. Database yang sudah ada harus menjalankan `migrateSessionRevocationSheet()` per environment setelah backup dan verifikasi environment. Jangan deploy kode auth baru ke environment yang belum memiliki sheet tersebut; backend sengaja fail-closed dengan error `DB_MIGRATION_REQUIRED`.
 
 **Peringatan KDF:** perbaikan salt dan komposisi password belum menyelesaikan evaluasi algoritma hash. Jangan menyebut kontrol password sudah sepenuhnya lulus sebelum strategi KDF standar, backward compatibility, rehash, dan uji beban Apps Script disepakati serta diuji.
+
+
+## Progress update — 11 November 2026
+
+Perubahan lanjutan pada branch remediation:
+
+| Task | Status source | Sisa verifikasi / blocker |
+|---|---|---|
+| C-01 | Implemented — Testing Required | Matriks resmi §10 diterapkan; Router resolve diperbaiki ke global scope Apps Script; automated direct API tests disiapkan |
+| C-02 | Implemented — Runtime Benchmark Required | PBKDF2-HMAC-SHA256 120.000 iterasi; legacy SHA-256 diverifikasi dan otomatis di-upgrade setelah login sukses; benchmark Apps Script wajib sebelum rilis |
+| C-03 | Implemented — Testing Required | Header HS256/JWT, signature, claim iat/exp/sub, secret, user aktif dan role aktif diperiksa |
+| C-04 | Implemented — Migration & Testing Required | Revocation server-side dan cleanup ledger expired ditambahkan; migration REVOKED_SESSIONS tetap wajib pada DB existing |
+| C-05 | Implemented — Content/Runtime Test Required | Tujuh halaman publik disediakan dengan fallback editorial; status ON/OFF_HIDDEN/OFF_MAINTENANCE diperiksa backend |
+| C-06 | Partial — Environment Proof Required | Worker memiliki blok DEV/STAGING/PROD fail-closed; setup memerlukan CCMS_ENV eksplisit; URL deployment dan origin DEV/STAGING harus diisi serta diverifikasi oleh pemilik sistem |
+| C-07 | Test harness added — Execution Required | Node test untuk KDF, legacy hash, role matrix, token, logout, direct API dan Worker ditambahkan; SIT DEV/STAGING belum dieksekusi |
+| C-08 | UAT/release artifacts added — Approval Pending | UAT dua role, release/rollback gate tersedia; UAT, backup/restore drill, approval dan release belum dilakukan |
+
+**Penting:** status source implementation tidak sama dengan status SIT/UAT. Tidak ada perubahan yang di-merge ke main atau di-deploy ke production. PBKDF2 belum dinyatakan lulus sampai benchmark Apps Script dan test integrasi berhasil.
