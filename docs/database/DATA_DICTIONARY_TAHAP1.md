@@ -47,7 +47,7 @@ Pengaturan sistem key-value. Baca cepat (di-cache), tulis hanya Super Admin via 
 |---|---|---|---|
 | `config_key` | STRING | Ya | Kunci unik (lihat daftar kunci). Huruf besar + underscore. |
 | `config_value` | STRING | Ya | Nilai disimpan sebagai teks; interpretasi sesuai `value_type`. |
-| `value_type` | ENUM | Ya | `STRING` / `NUMBER` / `BOOLEAN` / `JSON` |
+| `value_type` | ENUM | Ya | `STRING` / `NUMBER` / `BOOLEAN` / `JSON` / `ENUM` |
 | `is_secret` | BOOLEAN | Ya | `TRUE` bila nilai sensitif (mis. tidak pernah dikirim ke frontend apa pun). |
 | `description` | STRING | Tidak | Penjelasan untuk admin. |
 | `updated_at` | TIMESTAMP | Ya | Waktu perubahan terakhir. |
