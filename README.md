@@ -48,7 +48,10 @@ ccms/
 │   │   ├── ROADMAP_3_TAHAPAN.md                              # Roadmap Implementasi
 │   │   ├── TAHAP1_IMPLEMENTASI_SELESAI.md                     # Ringkasan Teknis Tahap 1
 │   │   └── USER_GUIDE_TAHAP1.md                               # Panduan Langkah demi Langkah
-│   ├── deployment/\n│   │   ├── ENVIRONMENT_OVERVIEW.md                           # Ringkasan DEV/STAGING/PROD\n│   │   └── ENVIRONMENT_ISOLATION.md                           # Aturan isolasi & checklist\n│   └── database/
+│   ├── deployment/
+│   │   ├── ENVIRONMENT_OVERVIEW.md                           # Ringkasan DEV/STAGING/PROD
+│   │   └── ENVIRONMENT_ISOLATION.md                           # Aturan isolasi & checklist
+│   └── database/
 │       └── DATA_DICTIONARY_TAHAP1.md                         # Data Dictionary Sheet Tahap 1
 ├── frontend/
 │   ├── public/index.html                                     # Static Web Portal Publik (Pages)
