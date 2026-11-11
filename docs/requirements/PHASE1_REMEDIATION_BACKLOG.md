@@ -79,7 +79,7 @@ Daftar ditampilkan dari Low → Medium → High → Critical sesuai permintaan. 
 
 ## Catatan koreksi hasil audit RBAC
 
-Data Dictionary Tahap 1 §10 ternyata **sudah memiliki matriks Role → Permission baseline** untuk enam role dan 23 permission. Karena itu, pernyataan audit sebelumnya bahwa matriks tidak ditemukan perlu dikoreksi: gap sebenarnya adalah matriks tersebut belum diterapkan oleh `Auth.getUserRolesAndPermissions()`, yang masih memakai fallback hardcoded. Implementasi wajib mengikuti matriks resmi yang sudah ada; tidak perlu mendesain matriks baru kecuali ditemukan konflik yang perlu keputusan pemilik.
+Data Dictionary Tahap 1 §10 memiliki matriks Role → Permission baseline untuk enam role dan 23 permission. Pemeriksaan source terbaru pada branch ini menunjukkan `Auth.getUserRolesAndPermissions()` **sudah menerapkan mapping enam role tersebut**, dengan filter permission aktif dan stage gate `stage <= 1`. Dengan demikian, catatan lama bahwa runtime masih memakai fallback hardcoded sudah tidak berlaku untuk source branch saat ini. Gap yang tersisa adalah verifikasi end-to-end: uji route langsung melalui `Code.doPost`, role/permission nonaktif, kombinasi multi-role, dan bukti runtime pada Apps Script STAGING. Implementasi tetap harus mengikuti matriks resmi; jangan mendesain matriks alternatif.
 
 
 ## Progress implementasi branch
@@ -123,3 +123,21 @@ Perubahan lanjutan pada branch remediation:
 
 
 **CI evidence (11 November 2026):** GitHub Actions run 8 — 12 automated tests passed, 0 failed. Detail cakupan dan batas pengujian dicatat pada [SIT_TAHAP1.md](../testing/SIT_TAHAP1.md). Hasil ini tidak menggantikan runtime benchmark PBKDF2 Apps Script, SIT integrasi DEV/STAGING, maupun UAT.
+
+
+## Progress update — 11 November 2026 (RBAC source re-review)
+
+Pemeriksaan ulang `Auth.gs`, `Router.gs`, `Code.gs`, Data Dictionary §10, dan `backend/tests/sit/auth_security.test.cjs` pada branch kerja menghasilkan status berikut:
+
+| Area | Temuan source/test | Status |
+|---|---|---|
+| Matriks enam role | `getUserRolesAndPermissions()` memuat keenam role dan daftar grant yang mengikuti Data Dictionary §10 | Implemented — Source Reviewed |
+| Stage gate | Hanya permission aktif dengan `stage <= 1` yang masuk daftar permission efektif | Implemented — Source Reviewed |
+| Role aktif | Hanya role aktif yang dipakai untuk menghitung grant; tidak adanya role aktif membuat sesi ditolak oleh verifier | Implemented — Source Reviewed |
+| Route authorization | `Code.doPost()` memeriksa permission route sebelum handler; route dengan permission `null` tetap memerlukan sesi bila `needsSession=true` | Implemented — Source Reviewed |
+| Automated matrix test | SIT menguji keenam role terhadap permission Tahap 1; skenario PASTOR, SECRETARY, TREASURER, COMMITTEE_HEAD, dan STAFF tidak memperoleh grant Tahap 1 yang tidak tercantum di matriks | Automated Test Present |
+| Direct API allow/deny | SIT harness memuat `Code.gs`, tetapi test matriks saat ini memanggil fungsi perhitungan permission; belum membuktikan seluruh kombinasi role × route melalui `doPost()` | Pending — Test Gap |
+| Role/permission inactive & multi-role | Belum ada bukti test eksplisit untuk seluruh kombinasi status nonaktif dan gabungan beberapa role | Pending — Test Gap |
+| Apps Script STAGING | Belum dilakukan pengujian endpoint privat lintas-role di runtime STAGING | Pending — Runtime Verification |
+
+**Keputusan tindak lanjut:** tidak perlu mengubah matriks atau kode RBAC hanya berdasarkan audit ini. Lanjutkan dengan penambahan tes direct API dan status nonaktif/multi-role, lalu lakukan verifikasi runtime STAGING setelah akun UAT disetujui. Tidak ada perubahan database, akun, deployment, atau PROD dalam pembaruan dokumentasi ini.
