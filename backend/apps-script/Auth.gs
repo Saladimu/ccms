@@ -53,6 +53,7 @@ var Auth = (function () {
 
     var payload = {
       sub: user.user_id,
+      jti: Utilities.getUuid(),
       username: user.username,
       name: user.full_name,
       iat: nowSec,
@@ -97,6 +98,17 @@ var Auth = (function () {
     if (!activeUser || !(activeUser.is_active === true || String(activeUser.is_active).toUpperCase() === 'TRUE')) {
       throw new AppError('UNAUTHORIZED', 'Akun tidak aktif atau tidak ditemukan.', 401);
     }
+
+    // Logout revocation is enforced server-side. Legacy JWTs without jti are
+    // assigned a deterministic ID from their signed token during transition.
+    var sessionId = payload.jti || bytesToHex(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, token));
+    var revokedSheet = Db.spreadsheet().getSheetByName('REVOKED_SESSIONS');
+    if (!revokedSheet) throw new AppError('DB_MIGRATION_REQUIRED', 'Database perlu migrasi REVOKED_SESSIONS sebelum autentikasi dapat digunakan.', 503);
+    var revoked = Db.readAll('REVOKED_SESSIONS').some(function (row) {
+      return String(row.session_id) === String(sessionId);
+    });
+    if (revoked) throw new AppError('UNAUTHORIZED', 'Sesi telah diakhiri. Silakan login kembali.', 401);
+    payload.jti = sessionId;
     return payload;
   }
 
@@ -268,7 +280,25 @@ var Auth = (function () {
 
   /** Handler auth.logout */
   function logout(ctx) {
-    Audit.log(ctx, 'LOGOUT', 'AUTH', 'USERS', ctx.user.user_id, { username: ctx.user.username });
+    var sessionId = ctx.user.session_id;
+    if (!sessionId) throw new AppError('UNAUTHORIZED', 'ID sesi tidak tersedia. Silakan login kembali.', 401);
+
+    var existing = Db.readAll('REVOKED_SESSIONS').some(function (row) {
+      return String(row.session_id) === String(sessionId);
+    });
+    if (!existing) {
+      Db.write('REVOKED_SESSIONS', function () {
+        return {
+          append: [{
+            session_id: sessionId,
+            user_id: ctx.user.user_id,
+            revoked_at: Db.now(),
+            expires_at: ctx.user.session_expires_at || '',
+          }],
+        };
+      });
+    }
+    Audit.log(ctx, 'LOGOUT', 'AUTH', 'USERS', ctx.user.user_id, { username: ctx.user.username, session_revoked: true });
     return { loggedOut: true };
   }
 
