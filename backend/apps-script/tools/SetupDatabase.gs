@@ -7,8 +7,9 @@
  *  3. Membuat akun Super Admin awal (username: admin, password: dicetak di log).
  *  4. Mencetak langkah berikutnya di log.
  *
- * PENTING: Ganti nama folder Drive (DRIVE_FOLDER_NAME) sesuai environment
- * sebelum menjalankan (DEV / STAGING / PROD).
+ * Environment ditentukan melalui Script Properties CCMS_ENV (DEV/STAGING/PROD).
+ * Setup menolak database yang sudah memiliki CCMS_SPREADSHEET_ID agar tidak
+ * membuat database baru tanpa sengaja. PROD memerlukan konfirmasi eksplisit.
  */
 
 function setupDatabase() {
