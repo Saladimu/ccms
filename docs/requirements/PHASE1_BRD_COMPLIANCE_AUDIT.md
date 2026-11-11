@@ -541,3 +541,36 @@ Perubahan source berikut telah dibuat pada branch `remediation/phase1-brd-alignm
 - Perubahan session revocation menambahkan sheet `REVOKED_SESSIONS`. Database existing wajib dimigrasikan secara terencana sebelum kode baru di-deploy. Script migrasi memblokir PROD kecuali flag konfirmasi khusus diaktifkan.
 - SetupDatabase sekarang menolak eksekusi bila `CCMS_SPREADSHEET_ID` sudah ada. Jangan menghapus property tersebut sebagai jalan pintas untuk menjalankan setup ulang.
 - Tahap berikutnya harus menambahkan/menjalankan test suite untuk login, role matrix, direct API, logout/revocation, akun nonaktif, config validation, public page status, dan XSS.
+
+
+## 17. Re-review RBAC pada branch remediation — 11 November 2026
+
+Bagian 2, 13, dan 15–16 di atas merupakan catatan audit awal dan sebagian statusnya telah berubah setelah remediasi. Re-review dilakukan terhadap source pada `remediation/phase1-brd-alignment`, khususnya `Auth.gs`, `Router.gs`, `Code.gs`, `DATA_DICTIONARY_TAHAP1.md` §10, serta SIT `backend/tests/sit/auth_security.test.cjs`. Bagian ini menjadi status RBAC terbaru untuk branch tersebut dan **menggantikan klaim status RBAC lama yang bertentangan**.
+
+### 17.1 Hasil source review terbaru
+
+| Kontrol | Bukti terbaru | Status |
+|---|---|---|
+| Matriks enam role | `Auth.getUserRolesAndPermissions()` memiliki mapping untuk SUPER_ADMIN, PASTOR, SECRETARY, TREASURER, COMMITTEE_HEAD, STAFF yang mengikuti Data Dictionary §10 | Implemented — Source Reviewed |
+| Permission stage gate | Daftar permission efektif dibatasi ke record aktif dengan `stage <= 1` | Implemented — Source Reviewed |
+| Role nonaktif | Role nonaktif tidak dimasukkan dalam daftar role/grant; verifier menolak akun tanpa role aktif | Implemented — Source Reviewed |
+| Enforcement pada route | `Code.doPost()` menghitung ulang role/permission dari user pada setiap request privat dan menolak route ber-permission bila grant tidak ada | Implemented — Source Reviewed |
+| Route session-only | `auth.me`, `auth.logout`, dan `menu.list` memerlukan sesi tetapi tidak mensyaratkan permission spesifik; kebijakan ini tetap perlu konfirmasi keamanan produk | Source Confirmed — Policy Review Required |
+| Matriks permission Tahap 1 | SIT memeriksa hasil permission keenam role terhadap daftar Tahap 1 | Automated Test Present |
+
+### 17.2 Batas bukti yang masih terbuka
+
+1. Test matriks saat ini memanggil `Auth.getUserRolesAndPermissions()` secara langsung. Walaupun harness juga memuat `Code.gs`, belum ada bukti bahwa seluruh kombinasi role × route diuji melalui `doPost()` sebagai direct API.
+2. Belum ada test eksplisit yang mencakup role nonaktif, permission nonaktif, dan gabungan beberapa role secara menyeluruh.
+3. Belum ada hasil uji endpoint privat lintas-role pada Apps Script STAGING. Tes CI Node bukan pengganti integrasi Google Apps Script, Google Sheets, dan Worker.
+4. Belum ada UAT dengan akun role berbeda; pembuatan akun UAT tetap menunggu persetujuan pemilik sistem.
+
+### 17.3 Acceptance criteria RBAC yang tersisa
+
+- [ ] Direct API test melalui `Code.doPost()` membuktikan allow/deny untuk route privat yang tersedia.
+- [ ] Role nonaktif dan permission nonaktif tidak menghasilkan grant.
+- [ ] Kombinasi multi-role menghasilkan gabungan grant yang tepat tanpa melewati stage gate.
+- [ ] Uji runtime STAGING dengan akun UAT minimal dua role berbeda lulus setelah persetujuan pemilik.
+- [ ] Kebijakan route session-only (`auth.me`, `auth.logout`, `menu.list`) dikonfirmasi dan dicatat.
+
+**Kesimpulan RBAC terbaru:** matriks dan stage gate sudah ada pada source branch, sehingga implementasi mapping bukan lagi gap utama. RBAC belum boleh dinyatakan lulus penuh sebelum direct API test, pengujian status nonaktif/multi-role, dan verifikasi runtime STAGING diselesaikan. Pembaruan ini hanya mengubah dokumentasi repository; tidak mengubah source aplikasi, database, deployment, akun, atau environment PROD.
