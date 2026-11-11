@@ -67,7 +67,7 @@ var Public = (function () {
           Config.get('CHURCH_HISTORY', 'Profil dan sejarah gereja belum diatur.'),
           'Visi: ' + Config.get('CHURCH_VISION', 'Belum diatur.'),
           'Misi: ' + Config.get('CHURCH_MISSION', 'Belum diatur.')
-        ].join('\\n\\n')
+        ].join('\n\n')
       };
     } else if (menuKey === 'schedule') {
       data = { message: Config.get('PUBLIC_WORSHIP_SCHEDULE', 'Jadwal ibadah belum diperbarui. Silakan hubungi gereja untuk informasi terbaru.') };
@@ -84,7 +84,7 @@ var Public = (function () {
           'Telepon: ' + Config.get('CHURCH_PHONE', 'Belum diatur.'),
           'Email: ' + Config.get('CHURCH_EMAIL', 'Belum diatur.'),
           'Jam layanan: ' + Config.get('PUBLIC_CONTACT_HOURS', 'Silakan hubungi gereja.')
-        ].join('\\n')
+        ].join('\n')
       };
     }
 
