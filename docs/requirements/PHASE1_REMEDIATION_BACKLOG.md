@@ -116,10 +116,10 @@ Perubahan lanjutan pada branch remediation:
 | C-04 | Implemented — Migration & Testing Required | Revocation server-side dan cleanup ledger expired ditambahkan; migration REVOKED_SESSIONS tetap wajib pada DB existing |
 | C-05 | Implemented — Content/Runtime Test Required | Tujuh halaman publik disediakan dengan fallback editorial; status ON/OFF_HIDDEN/OFF_MAINTENANCE diperiksa backend |
 | C-06 | Partial — Environment Proof Required | Worker memiliki blok DEV/STAGING/PROD fail-closed; setup memerlukan CCMS_ENV eksplisit; URL deployment dan origin DEV/STAGING harus diisi serta diverifikasi oleh pemilik sistem |
-| C-07 | Automated CI PASS — 11/11 | Node test untuk KDF, legacy hash, role matrix, token, logout, direct API dan Worker lulus; SIT DEV/STAGING masih pending |
+| C-07 | Automated CI PASS — 12/12 | Node test untuk KDF, legacy hash, role matrix, token, logout, direct API dan Worker lulus; SIT DEV/STAGING masih pending |
 | C-08 | UAT/release artifacts added — Approval Pending | UAT dua role, release/rollback gate tersedia; UAT, backup/restore drill, approval dan release belum dilakukan |
 
 **Penting:** status source implementation tidak sama dengan status SIT/UAT. Tidak ada perubahan yang di-merge ke main atau di-deploy ke production. PBKDF2 belum dinyatakan lulus sampai benchmark Apps Script dan test integrasi berhasil.
 
 
-**CI evidence (11 November 2026):** GitHub Actions run 8 — 11 automated tests passed, 0 failed. Detail cakupan dan batas pengujian dicatat pada [SIT_TAHAP1.md](../testing/SIT_TAHAP1.md). Hasil ini tidak menggantikan runtime benchmark PBKDF2 Apps Script, SIT integrasi DEV/STAGING, maupun UAT.
+**CI evidence (11 November 2026):** GitHub Actions run 8 — 12 automated tests passed, 0 failed. Detail cakupan dan batas pengujian dicatat pada [SIT_TAHAP1.md](../testing/SIT_TAHAP1.md). Hasil ini tidak menggantikan runtime benchmark PBKDF2 Apps Script, SIT integrasi DEV/STAGING, maupun UAT.
