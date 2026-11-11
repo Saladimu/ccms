@@ -81,7 +81,7 @@ Jika proyek belum memiliki Node test runtime di mesin penguji, jalankan pada Nod
 
 ## 6. Hasil automated CI — 11 November 2026
 
-<badge>PASS</badge> **GitHub Actions — CCMS Phase 1 SIT**  
+**PASS** **GitHub Actions — CCMS Phase 1 SIT**  
 Run: 8  
 Commit diuji: `d668b9818a8a3b7897eec48ef5d21347c8eaa5c8`  
 Hasil: **11/11 automated tests passed, 0 failed**.
