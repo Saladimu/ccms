@@ -494,3 +494,26 @@ Audit ini merupakan pemeriksaan source. Belum ada perubahan aplikasi, data, konf
 - [ ] Uji backup/restore dilaksanakan sesuai tahap roadmap yang ditetapkan; statusnya tidak boleh diasumsikan selesai hanya dari dokumentasi.
 
 Audit ini berdasarkan source dan dokumentasi repository. Tidak ada database, Script Properties, konfigurasi Worker, atau data production yang diubah selama pemeriksaan.
+
+
+## 15. Koreksi audit RBAC — matriks resmi ditemukan pada Data Dictionary
+
+**Koreksi penting atas bagian 13:** Pemeriksaan ulang terhadap keseluruhan `docs/database/DATA_DICTIONARY_TAHAP1.md` menemukan bahwa §10 sudah memuat matriks Role → Permission baseline untuk keenam role dan 23 permission. Dengan demikian, pernyataan pada bagian 13 yang menyebut matriks role-permission tidak ditemukan adalah **tidak tepat dan digantikan oleh koreksi ini**.
+
+Gap yang sebenarnya:
+1. Artefak matriks sudah ada dan menjadi sumber acuan resmi.
+2. Seed database belum memiliki sheet relasi ROLE_PERMISSIONS; hal ini tidak otomatis menjadi gap karena Data Dictionary menempatkan matriks dalam dokumen, tetapi runtime harus mengimplementasikannya.
+3. `Auth.getUserRolesAndPermissions()` belum membaca/menerapkan matriks tersebut. Ia memberi semua permission aktif kepada SUPER_ADMIN dan dua permission hardcoded yang sama kepada seluruh role non-Super Admin.
+4. Permission future stage harus mengikuti stage pada katalog dan roadmap, bukan diberikan secara fungsional sebelum tahap tersebut aktif.
+5. Pengujian direct API terhadap matriks enam role × route privat belum tersedia.
+
+| Komponen | Kondisi yang benar | Status |
+|---|---|---|
+| Matriks role-permission sebagai dokumen | Ada di Data Dictionary §10, enam role × 23 permission | Sesuai — artefak |
+| Matriks di runtime | Tidak diterapkan oleh Auth.gs | Gap — Critical |
+| Stage gate permission | Permission future stage ditandai di katalog, tetapi runtime tidak memfilter stage | Gap — High |
+| Validasi role assignment | Role code tidak dikenal diabaikan | Gap — High |
+| Direct API test | Bukti allow/deny belum tersedia | Belum terverifikasi — Critical |
+
+Tindakan: remediasi harus mengimplementasikan Data Dictionary §10 secara persis. Jangan membuat matriks alternatif yang bertentangan. Bila ada keputusan bisnis yang perlu diubah, update Data Dictionary dan catat di change log terlebih dahulu.
+
