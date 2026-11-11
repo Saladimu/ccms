@@ -143,7 +143,7 @@ export default {
 /** Fetch ke Apps Script dengan timeout 55 detik + forward User-Agent. */
 async function fetchUpstream(env, payload, request) {
   const gasUrl = env.GAS_URL || "";
-  if (!gasUrl || gasUrl.indexOf("DEPLOY_ID") !== -1) {
+  if (!gasUrl || gasUrl.indexOf("DEPLOY_ID") !== -1 || gasUrl.indexOf("CONFIGURE_") === 0) {
     return {
       response: json(
         { ok: false, error: { code: "CONFIG_ERROR", message: "GAS_URL belum dikonfigurasi di Worker" } },
