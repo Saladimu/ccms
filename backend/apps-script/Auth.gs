@@ -74,6 +74,7 @@ var Auth = (function () {
   function verifyToken(token) {
     if (!token) throw new AppError('UNAUTHORIZED', 'Sesi tidak ditemukan. Silakan login.', 401);
     var secret = PropertiesService.getScriptProperties().getProperty('SESSION_SECRET');
+    if (!secret) throw new AppError('AUTH_ERROR', 'SESSION_SECRET belum dikonfigurasi', 500);
     var parts = token.split('.');
     if (parts.length !== 3) throw new AppError('UNAUTHORIZED', 'Format token tidak valid', 401);
 
@@ -85,8 +86,18 @@ var Auth = (function () {
     var payload = JSON.parse(payloadStr);
 
     var nowSec = Math.floor(Date.now() / 1000);
-    if (payload.exp && payload.exp < nowSec) {
+    if (!payload.exp || payload.exp <= nowSec) {
       throw new AppError('UNAUTHORIZED', 'Sesi telah berakhir. Silakan login kembali.', 401);
+    }
+
+    // BRD: akun yang dinonaktifkan tidak boleh meneruskan request privat,
+    // termasuk bila token diterbitkan sebelum akun dinonaktifkan.
+    var activeUser = null;
+    Db.readAll('USERS').forEach(function (u) {
+      if (String(u.user_id) === String(payload.sub)) activeUser = u;
+    });
+    if (!activeUser || !(activeUser.is_active === true || String(activeUser.is_active).toUpperCase() === 'TRUE')) {
+      throw new AppError('UNAUTHORIZED', 'Akun tidak aktif atau tidak ditemukan.', 401);
     }
     return payload;
   }
@@ -223,16 +234,36 @@ var Auth = (function () {
     var roles = Db.readAll('ROLES').filter(function (r) { return roleIds.indexOf(r.role_id) !== -1 && (r.is_active === true || String(r.is_active).toUpperCase() === 'TRUE'); });
     var roleCodes = roles.map(function (r) { return r.role_code; });
 
-    // Untung baseline Tahap 1: jika Super Admin, berikan semua permission active
-    var allPerms = Db.readAll('PERMISSIONS').filter(function (p) { return p.is_active === true || String(p.is_active).toUpperCase() === 'TRUE'; });
+    // Baseline resmi: docs/database/DATA_DICTIONARY_TAHAP1.md §10.
+    // Permission future-stage tidak efektif sebelum stage implementasinya aktif.
+    var ACTIVE_IMPLEMENTATION_STAGE = 1;
+    var rolePermissionMatrix = {
+      SUPER_ADMIN: ['USER_MANAGE', 'SYSTEM_CONFIG', 'MENU_CONFIG', 'AUDIT_VIEW',
+        'MEMBER_READ', 'MEMBER_CREATE', 'MEMBER_EDIT', 'MEMBER_ARCHIVE', 'REGISTRATION_REVIEW', 'IMPORT_RUN',
+        'COMMITTEE_MANAGE', 'SCHEDULE_VIEW', 'SCHEDULE_MANAGE',
+        'FINANCE_READ', 'FINANCE_WRITE', 'FINANCE_VERIFY', 'RECEIPT_VIEW',
+        'ANNOUNCE_DRAFT', 'ANNOUNCE_APPROVE', 'ANNOUNCE_PUBLISH', 'EVENT_MANAGE', 'REPORT_VIEW', 'AI_USE'],
+      PASTOR: ['AUDIT_VIEW', 'SCHEDULE_VIEW', 'FINANCE_READ', 'ANNOUNCE_DRAFT', 'ANNOUNCE_APPROVE', 'ANNOUNCE_PUBLISH', 'REPORT_VIEW', 'AI_USE'],
+      SECRETARY: ['MEMBER_READ', 'MEMBER_CREATE', 'MEMBER_EDIT', 'MEMBER_ARCHIVE', 'REGISTRATION_REVIEW', 'IMPORT_RUN', 'SCHEDULE_VIEW', 'RECEIPT_VIEW', 'ANNOUNCE_DRAFT', 'ANNOUNCE_PUBLISH', 'EVENT_MANAGE', 'REPORT_VIEW', 'AI_USE'],
+      TREASURER: ['FINANCE_READ', 'FINANCE_WRITE', 'FINANCE_VERIFY', 'RECEIPT_VIEW', 'REPORT_VIEW', 'AI_USE'],
+      COMMITTEE_HEAD: ['MEMBER_READ', 'COMMITTEE_MANAGE', 'SCHEDULE_VIEW', 'SCHEDULE_MANAGE', 'ANNOUNCE_DRAFT', 'ANNOUNCE_PUBLISH', 'EVENT_MANAGE', 'REPORT_VIEW', 'AI_USE'],
+      STAFF: ['SCHEDULE_VIEW'],
+    };
+
+    var allPerms = Db.readAll('PERMISSIONS').filter(function (p) {
+      var active = p.is_active === true || String(p.is_active).toUpperCase() === 'TRUE';
+      var stage = Number(p.stage || 1);
+      return active && stage <= ACTIVE_IMPLEMENTATION_STAGE;
+    });
+    var activeCodes = allPerms.map(function (p) { return p.permission_code; });
     var permCodes = [];
 
-    if (roleCodes.indexOf('SUPER_ADMIN') !== -1) {
-      permCodes = allPerms.map(function (p) { return p.permission_code; });
-    } else {
-      // Pembatasan role sederhana untuk role dasar
-      permCodes = ['SCHEDULE_VIEW', 'REPORT_VIEW'];
-    }
+    roleCodes.forEach(function (roleCode) {
+      var grants = rolePermissionMatrix[roleCode] || [];
+      grants.forEach(function (code) {
+        if (activeCodes.indexOf(code) !== -1 && permCodes.indexOf(code) === -1) permCodes.push(code);
+      });
+    });
 
     return { roles: roleCodes, permissions: permCodes };
   }
