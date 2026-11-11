@@ -64,7 +64,7 @@ export default {
     }
 
     const action = payload ? payload.action : "public.info";
-    const hasToken = !!(payload && payload.token);
+    const hasToken = !!(payload && (payload.token || (payload.meta && payload.meta.token)));
 
     // ---- Cache untuk action publik tanpa token ----
     if (CACHEABLE_ACTIONS.has(action) && !hasToken) {
@@ -166,7 +166,7 @@ async function fetchUpstream(env, payload, request) {
         action: payload ? payload.action : "public.info",
         payload: payload && payload.payload ? payload.payload : {},
         meta: {
-          token: (payload && payload.token) || "",
+          token: (payload && (payload.token || (payload.meta && payload.meta.token))) || "",
           ip: request.headers.get("cf-connecting-ip") || "",
           userAgent: (request.headers.get("User-Agent") || "").slice(0, 255),
         },

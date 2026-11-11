@@ -293,7 +293,9 @@ var Auth = (function () {
   }
 
   function getUserRolesAndPermissions(userId) {
-    var ur = Db.readAll('USER_ROLES').filter(function (r) { return r.user_id === userId; });
+    var ur = Db.readAll('USER_ROLES').filter(function (r) {
+      return r.user_id === userId && r.deleted !== true && String(r.deleted).toUpperCase() !== 'TRUE';
+    });
     var roleIds = ur.map(function (r) { return r.role_id; });
 
     var roles = Db.readAll('ROLES').filter(function (r) { return roleIds.indexOf(r.role_id) !== -1 && (r.is_active === true || String(r.is_active).toUpperCase() === 'TRUE'); });

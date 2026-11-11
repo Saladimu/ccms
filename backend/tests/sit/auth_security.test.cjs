@@ -8,7 +8,7 @@ const path = require('node:path');
 const repo = path.resolve(__dirname, '../../..');
 const tables = {
   USERS: [], ROLES: [], USER_ROLES: [], PERMISSIONS: [],
-  REVOKED_SESSIONS: [], LOGIN_ATTEMPTS: []
+  REVOKED_SESSIONS: [], LOGIN_ATTEMPTS: [], PUBLIC_MENU: [], CONFIG: [], AUDIT_LOG: []
 };
 const scriptProps = { SESSION_SECRET: 'sit-secret-not-for-production' };
 
@@ -80,8 +80,11 @@ const context = {
   Db,
   AppError,
   Audit: { log() {}, list() { return [{ audit_id: 'AUD-1' }]; } },
-  Users: { list() { return [{ user_id: 'USR-1' }]; } },
-  Config: { getNumber(_key, fallback) { return fallback; } },
+  Config: {
+    getNumber(_key, fallback) { return fallback; },
+    get(_key, fallback) { return fallback === undefined ? '' : fallback; },
+    getBool(_key, fallback) { return fallback; }
+  },
   Logger: { log() {} },
   ContentService: {
     MimeType: { JSON: 'application/json' },
@@ -108,6 +111,9 @@ function load(relativePath) {
   vm.runInContext(source, context, { filename: relativePath });
 }
 load('backend/apps-script/Auth.gs');
+load('backend/apps-script/Users.gs');
+load('backend/apps-script/Public.gs');
+load('backend/apps-script/PublicMenu.gs');
 load('backend/apps-script/Router.gs');
 load('backend/apps-script/Code.gs');
 
@@ -128,13 +134,15 @@ function signedToken({ sub = 'USR-1', role = 'PASTOR', exp, iat, alg = 'HS256', 
 function setupRole(roleCode = 'PASTOR', userId = 'USR-1') {
   tables.USERS = [{ _row: 2, user_id: userId, username: 'sit.user', is_active: true }];
   tables.ROLES = [
-    { role_id: 'R-1', role_code: roleCode, is_active: true },
+    { role_id: 'R-1', role_code: 'PASTOR', is_active: true },
     { role_id: 'R-2', role_code: 'SUPER_ADMIN', is_active: true },
     { role_id: 'R-3', role_code: 'SECRETARY', is_active: true },
-    { role_id: 'R-4', role_code: 'STAFF', is_active: true }
+    { role_id: 'R-4', role_code: 'STAFF', is_active: true },
+    { role_id: 'R-5', role_code: 'TREASURER', is_active: true },
+    { role_id: 'R-6', role_code: 'COMMITTEE_HEAD', is_active: true }
   ];
   const role = tables.ROLES.find(r => r.role_code === roleCode);
-  tables.USER_ROLES = [{ user_id: userId, role_id: role.role_id }];
+  tables.USER_ROLES = [{ _row: 2, user_id: userId, role_id: role.role_id }];
   const stageOne = ['USER_MANAGE','SYSTEM_CONFIG','MENU_CONFIG','AUDIT_VIEW'];
   const all = [
     ...stageOne,
@@ -296,6 +304,110 @@ test('C-01 private endpoint without token returns 401', () => {
     action: 'users.list', payload: {}, meta: {}
   }) } });
   assert.equal(JSON.parse(response.text).status, 401);
+});
+
+function post(action, role, extra = {}) {
+  setupRole(role);
+  const token = extra.token === undefined ? signedToken({ role }) : extra.token;
+  return JSON.parse(context.doPost({ postData: { contents: JSON.stringify({
+    action, payload: extra.payload || {}, meta: token ? { token } : {}
+  }) } }).text);
+}
+
+test('C-01 direct API denies SECRETARY, TREASURER, COMMITTEE_HEAD and STAFF from users.list', () => {
+  for (const role of ['SECRETARY', 'TREASURER', 'COMMITTEE_HEAD', 'STAFF']) {
+    assert.equal(post('users.list', role).status, 403, role);
+  }
+});
+
+test('C-01 SUPER_ADMIN can call stage-1 private routes', () => {
+  assert.equal(post('users.list', 'SUPER_ADMIN').status, 200);
+  assert.equal(post('audit.list', 'SUPER_ADMIN').status, 200);
+  assert.equal(post('menu.list', 'SUPER_ADMIN').status, 200);
+});
+
+test('C-01 inactive permission is not granted even to SUPER_ADMIN', () => {
+  setupRole('SUPER_ADMIN');
+  tables.PERMISSIONS.find(p => p.permission_code === 'USER_MANAGE').is_active = false;
+  const actual = context.Auth.getUserRolesAndPermissions('USR-1').permissions;
+  assert.equal(actual.includes('USER_MANAGE'), false);
+  const denied = JSON.parse(context.doPost({ postData: { contents: JSON.stringify({
+    action: 'users.list', payload: {}, meta: { token: signedToken({ role: 'SUPER_ADMIN' }) }
+  }) } }).text);
+  assert.equal(denied.status, 403);
+});
+
+test('C-01 inactive role is ignored; no active role rejects the session', () => {
+  setupRole('PASTOR');
+  tables.ROLES.find(r => r.role_code === 'PASTOR').is_active = false;
+  assert.throws(() => context.Auth.verifyToken(signedToken()), e => e.code === 'UNAUTHORIZED');
+});
+
+test('C-01 multi-role unions only active stage-1 grants', () => {
+  setupRole('PASTOR');
+  tables.USER_ROLES.push({ _row: 3, user_id: 'USR-1', role_id: 'R-3' });
+  const actual = context.Auth.getUserRolesAndPermissions('USR-1');
+  assert.deepEqual(Array.from(actual.roles).sort(), ['PASTOR', 'SECRETARY']);
+  assert.deepEqual(Array.from(actual.permissions).sort(), ['AUDIT_VIEW']);
+});
+
+test('C-01 deleted USER_ROLES rows are ignored', () => {
+  setupRole('PASTOR');
+  tables.USER_ROLES.push({ _row: 3, user_id: 'USR-1', role_id: 'R-2', deleted: true });
+  const actual = context.Auth.getUserRolesAndPermissions('USR-1');
+  assert.deepEqual(Array.from(actual.roles), ['PASTOR']);
+});
+
+test('H-02 replaceRolesByCode replaces prior roles instead of appending', () => {
+  setupRole('STAFF');
+  tables.USERS.push({ _row: 3, user_id: 'USR-ADMIN', username: 'admin', is_active: true });
+  tables.USER_ROLES.push({ _row: 3, user_id: 'USR-ADMIN', role_id: 'R-2' });
+  context.Users.update({
+    user: { user_id: 'USR-ADMIN' },
+    payload: { user_id: 'USR-1', role_codes: ['PASTOR'] }
+  });
+  const remaining = tables.USER_ROLES.filter(r => r.user_id === 'USR-1');
+  assert.equal(remaining.length, 1);
+  assert.equal(remaining[0].role_id, 'R-1');
+});
+
+test('H-02 last Super Admin cannot be deactivated', () => {
+  setupRole('SUPER_ADMIN');
+  assert.throws(() => context.Users.update({
+    user: { user_id: 'USR-1' },
+    payload: { user_id: 'USR-1', is_active: false }
+  }), e => e.code === 'CONFLICT');
+});
+
+test('C-05 public pages serve seven BRD menus and hide OFF_HIDDEN content', () => {
+  tables.PUBLIC_MENU = [
+    { menu_key: 'home', status: 'ON', sort_order: 1 },
+    { menu_key: 'profile', status: 'ON', sort_order: 2 },
+    { menu_key: 'schedule', status: 'ON', sort_order: 3 },
+    { menu_key: 'announcements', status: 'ON', sort_order: 4 },
+    { menu_key: 'events', status: 'ON', sort_order: 5 },
+    { menu_key: 'ministries', status: 'ON', sort_order: 6 },
+    { menu_key: 'contact', status: 'ON', sort_order: 7 }
+  ];
+  context.Config.get = (_key, fallback) => fallback || 'SIT';
+  for (const key of ['home', 'profile', 'schedule', 'announcements', 'events', 'ministries', 'contact']) {
+    const body = JSON.parse(context.doPost({ postData: { contents: JSON.stringify({
+      action: 'public.page', payload: { menu_key: key }
+    }) } }).text);
+    assert.equal(body.status, 200, key);
+    assert.equal(body.data.status, 'OK', key);
+  }
+  tables.PUBLIC_MENU.find(m => m.menu_key === 'schedule').status = 'OFF_HIDDEN';
+  const hidden = JSON.parse(context.doPost({ postData: { contents: JSON.stringify({
+    action: 'public.page', payload: { menu_key: 'schedule' }
+  }) } }).text);
+  assert.equal(hidden.status, 404);
+  tables.PUBLIC_MENU.find(m => m.menu_key === 'events').status = 'OFF_MAINTENANCE';
+  const maintenance = JSON.parse(context.doPost({ postData: { contents: JSON.stringify({
+    action: 'public.page', payload: { menu_key: 'events' }
+  }) } }).text);
+  assert.equal(maintenance.status, 200);
+  assert.equal(maintenance.data.status, 'MAINTENANCE');
 });
 
 

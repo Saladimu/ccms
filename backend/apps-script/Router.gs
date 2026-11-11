@@ -30,7 +30,7 @@ var Router = (function () {
     'roles.assign':       { module: 'Users',    handler: 'assignRole',    permission: 'USER_MANAGE', needsSession: true },
     'roles.revoke':       { module: 'Users',    handler: 'revokeRole',    permission: 'USER_MANAGE', needsSession: true },
 
-    'menu.list':          { module: 'PublicMenu', handler: 'list',       permission: null, needsSession: true },
+    'menu.list':          { module: 'PublicMenu', handler: 'list',       permission: 'MENU_CONFIG', needsSession: true },
     'menu.setStatus':     { module: 'PublicMenu', handler: 'setStatus',  permission: 'MENU_CONFIG', needsSession: true },
 
     'config.get':         { module: 'Config',   handler: 'apiGet',       permission: 'SYSTEM_CONFIG', needsSession: true },
