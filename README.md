@@ -14,7 +14,7 @@ Status source code, konfigurasi repository, dan deployment cloud adalah tiga hal
 | STAGING / UAT | SIT, UAT, dan validasi kandidat rilis | **Belum siap** — project Apps Script dan resource STAGING belum dibuat/diverifikasi |
 | PROD | Operasional resmi | URL production tercatat di bawah; perubahan/deployment tetap melalui persetujuan dan release gate |
 
-Lihat [Environment Overview](docs/deployment/ENVIRONMENT_OVERVIEW.md) dan [Environment Isolation](docs/deployment/ENVIRONMENT_ISOLATION.md) sebelum melakukan setup atau deployment.
+Lihat [Environment Overview](docs/deployment/ENVIRONMENT_OVERVIEW.md) [Environment Isolation](docs/deployment/ENVIRONMENT_ISOLATION.md), dan [STAGING Setup Runbook](docs/deployment/STAGING_SETUP_RUNBOOK.md) sebelum melakukan setup atau deployment.
 
 ### 🌐 URL Resmi Production (Tahap 1)
 
@@ -50,7 +50,8 @@ ccms/
 │   │   └── USER_GUIDE_TAHAP1.md                               # Panduan Langkah demi Langkah
 │   ├── deployment/
 │   │   ├── ENVIRONMENT_OVERVIEW.md                           # Ringkasan DEV/STAGING/PROD
-│   │   └── ENVIRONMENT_ISOLATION.md                           # Aturan isolasi & checklist
+│   │   ├── ENVIRONMENT_ISOLATION.md                           # Aturan isolasi & checklist
+│   │   └── STAGING_SETUP_RUNBOOK.md                           # Persiapan STAGING/UAT
 │   └── database/
 │       └── DATA_DICTIONARY_TAHAP1.md                         # Data Dictionary Sheet Tahap 1
 ├── frontend/
