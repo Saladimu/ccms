@@ -364,6 +364,9 @@ var Auth = (function () {
       throw new AppError('VALIDATION', 'Password baru harus berbeda dari password lama', 400);
     }
 
+    var sessionId = String(ctx.user.session_id || '');
+    if (!sessionId) throw new AppError('UNAUTHORIZED', 'ID sesi tidak tersedia. Silakan login kembali.', 401);
+
     var nowIso = Db.now();
     Db.write('USERS', function () {
       return {
@@ -380,8 +383,6 @@ var Auth = (function () {
     });
 
     // Cabut sesi saat ini; pengguna harus login kembali dengan password baru.
-    var sessionId = String(ctx.user.session_id || '');
-    if (!sessionId) throw new AppError('UNAUTHORIZED', 'ID sesi tidak tersedia. Silakan login kembali.', 401);
     var alreadyRevoked = Db.readAll('REVOKED_SESSIONS').some(function (row) {
       return String(row.session_id) === sessionId;
     });
