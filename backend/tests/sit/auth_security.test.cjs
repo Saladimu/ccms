@@ -81,7 +81,7 @@ const context = {
   AppError,
   Audit: { log() {}, list() { return [{ audit_id: 'AUD-1' }]; } },
   Users: { list() { return [{ user_id: 'USR-1' }]; } },
-  Config: {},
+  Config: { getNumber(_key, fallback) { return fallback; } },
   Logger: { log() {} },
   ContentService: {
     MimeType: { JSON: 'application/json' },
@@ -245,4 +245,25 @@ test('C-01 private endpoint without token returns 401', () => {
     action: 'users.list', payload: {}, meta: {}
   }) } });
   assert.equal(JSON.parse(response.text).status, 401);
+});
+
+
+test('C-02 successful legacy login upgrades stored password hash to PBKDF2', () => {
+  setupRole('SUPER_ADMIN');
+  const password = 'LegacyPass123';
+  const salt = 'c'.repeat(32);
+  let digest = Buffer.from(password + ':' + salt);
+  for (let i = 0; i < 10000; i++) digest = crypto.createHash('sha256').update(digest).digest();
+  tables.USERS[0] = {
+    _row: 2, user_id: 'USR-1', username: 'sit.user', full_name: 'SIT User',
+    is_active: true, password_hash: 'sha256$10000$' + salt + '$' + digest.toString('hex'),
+    consecutive_failures: 0, locked_until: null
+  };
+  const result = context.Auth.login({
+    payload: { username: 'sit.user', password },
+    ip: '127.0.0.1',
+    userAgent: 'SIT'
+  });
+  assert.ok(result.token);
+  assert.match(tables.USERS[0].password_hash, /^pbkdf2-sha256\$/);
 });
