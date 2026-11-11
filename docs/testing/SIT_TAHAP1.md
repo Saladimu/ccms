@@ -77,3 +77,22 @@ Jika proyek belum memiliki Node test runtime di mesin penguji, jalankan pada Nod
 - [ ] SIT report ditandatangani reviewer teknis.
 
 **Catatan:** Perubahan PBKDF2 menggunakan baseline 120.000 iterasi. Ini belum boleh dianggap final untuk produksi sampai runtime Apps Script diukur pada DEV/STAGING, termasuk waktu login, create user, dan reset password. Bila waktu eksekusi tidak layak, hentikan rilis dan evaluasi strategi KDF/arsitektur—jangan menurunkan iterasi tanpa keputusan keamanan.
+
+
+## 6. Hasil automated CI — 11 November 2026
+
+<badge>PASS</badge> **GitHub Actions — CCMS Phase 1 SIT**  
+Run: 8  
+Commit diuji: `d668b9818a8a3b7897eec48ef5d21347c8eaa5c8`  
+Hasil: **11/11 automated tests passed, 0 failed**.
+
+Rincian:
+- Backend/Auth: 8 test lulus — PBKDF2 test oracle, verifikasi hash legacy, matriks role/stage gate, JWT malformed/expired/alg/signature, inactive user, secret kosong, logout revocation, direct API allow/deny dan no-token.
+- Worker: 3 test lulus — placeholder environment ditolak tanpa upstream call, malformed JSON/method ditolak, CORS menolak origin yang tidak di-allowlist.
+
+Batas cakupan:
+- Test PBKDF2 memakai 10.000 iterasi untuk fixture uji dan mencocokkan hasil terhadap Node PBKDF2-HMAC-SHA256. **Ini bukan benchmark runtime Apps Script pada 120.000 iterasi.**
+- Belum menguji langsung Apps Script, Google Sheets, Cloudflare deployment, migration/cleanup pada spreadsheet, tujuh halaman publik live, menu hidden/maintenance, atau isolasi DEV/STAGING/PROD aktual.
+- UAT dua role belum dijalankan.
+
+Karena itu, status automated suite adalah PASS, sedangkan **SIT integrasi DEV/STAGING dan C-08 release gate masih OPEN**. Jangan menafsirkan hasil CI ini sebagai izin deploy production.
