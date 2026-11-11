@@ -108,7 +108,7 @@ Menu navigasi portal publik. Status ditegakkan di backend (endpoint halaman pun 
 
 Unik: `menu_key`.
 
-### Seed data (6 menu level 1)
+### Seed data (7 menu level 1)
 
 | menu_key | menu_label | url_path | sort_order |
 |---|---|---|---|
@@ -118,6 +118,7 @@ Unik: `menu_key`.
 | `events` | Kegiatan | `/kegiatan` | 4 |
 | `profile` | Profil Gereja | `/profil` | 5 |
 | `contact` | Kontak | `/kontak` | 6 |
+| `ministries` | Komisi & Pelayanan | `/komisi-pelayanan` | 7 |
 | `ministries` | Komisi & Pelayanan | `/komisi-pelayanan` | 7 |
 
 ---
