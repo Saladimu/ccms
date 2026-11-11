@@ -1,34 +1,58 @@
 # Deployment Cloudflare (Pages + Worker)
 
-## 1. Cloudflare Pages (frontend statis)
+## 1. Prinsip environment
 
-| Environment | Folder publish | Catatan |
+Buat resource Cloudflare terpisah untuk DEV, STAGING, dan PROD. Setiap environment memiliki Pages public/internal dan Worker API sendiri. Gunakan satu akun Cloudflare bila dikehendaki, tetapi jangan memakai Worker atau origin lintas environment.
+
+| Environment | Pages public | Pages internal | Worker |
+|---|---|---|---|
+| DEV | Project/domain DEV | Project/domain DEV internal | `ccms-api-dev` |
+| STAGING | Project/domain STAGING | Project/domain STAGING internal | `ccms-api-staging` |
+| PROD | `ccms-public` | `ccms-internal` | `ccms-api-production` |
+
+Nama project Pages STAGING yang disarankan: `ccms-staging-public` dan `ccms-staging-internal`. Domain final ditentukan Cloudflare saat project dibuat; jangan menebak atau memasukkan domain yang belum ada.
+
+## 2. Cloudflare Pages
+
+Buat project Pages terpisah untuk setiap frontend dan environment:
+
+| Environment / app | Publish directory | Branch |
 |---|---|---|
-| DEV | `frontend/public` | Portal publik dev |
-| STAGING | `frontend/public` | Branch staging |
-| PROD | `frontend/public` | Branch main |
+| DEV public | `frontend/public` | branch pengembangan DEV |
+| DEV internal | `frontend/internal` | branch pengembangan DEV |
+| STAGING public | `frontend/public` | branch rilis STAGING |
+| STAGING internal | `frontend/internal` | branch rilis STAGING |
+| PROD public | `frontend/public` | `main` |
+| PROD internal | `frontend/internal` | `main` |
 
-Langkah:
-1. Cloudflare dashboard → Workers & Pages → Create → Pages → Connect to Git.
-2. Production branch: `main`, preview branch: selain main.
-3. Build command: kosong (statis).
-4. **Publish directory:** `frontend/public`.
-5. Domain internal: buat project Pages kedua dengan publish directory `frontend/internal` (URL/subdomain terpisah, sesuai keputusan arsitektur: akses internal tidak ditautkan dari portal publik).
+Build command kosong untuk frontend statis. Pastikan branch rilis STAGING dipromosikan secara sengaja dari kode yang telah lulus pemeriksaan; jangan menghubungkan STAGING ke `main` secara otomatis.
 
-> Alternatif tanpa Git integration: `npx wrangler pages deploy frontend/public --project-name=ccms-public`.
+## 3. Cloudflare Worker
 
-## 2. Cloudflare Worker (API gateway)
+Konfigurasi ada di `worker/wrangler.toml`. Masing-masing environment harus memiliki:
+- Nama Worker tersendiri.
+- `GAS_URL` yang menunjuk ke deployment Apps Script environment itu saja.
+- `ALLOWED_ORIGINS` yang hanya memuat origin Pages public/internal environment tersebut.
 
-1. `cd worker`
-2. Update `wrangler.toml`:
-   - `GAS_URL` = URL deploy Apps Script environment terkait.
-   - `ALLOWED_ORIGINS` = origin Pages environment terkait (JSON array).
-3. `npx wrangler deploy` (dev), `npx wrangler deploy --env production` (prod).
-4. Arahkan path `/api/*` ke Worker:
-   - Workers & Pages → Routes → tambah route `ccms-public.pages.dev/api/*` → Worker `ccms-api`, **atau**
-   - gunakan custom domain Worker (mis. `api.gereja.example`) dan set di frontend.
+Periksa dan isi blok environment yang dituju saja. Jangan commit token/secret ke file konfigurasi. `SESSION_SECRET` berada di Script Properties Apps Script, bukan Worker vars.
 
-## 3. Aturan environment (wajib)
+Deploy per environment:
 
-- Tiap environment (DEV/STAGING/PROD) punya pair **Worker ↔ Apps Script** sendiri.
-- Jangan pernah menunjuk Worker PROD ke Apps Script DEV.
+```bash
+cd worker
+npx wrangler deploy --env dev
+npx wrangler deploy --env staging
+npx wrangler deploy --env production
+```
+
+Jalankan hanya perintah untuk environment yang telah disiapkan dan mendapat persetujuan. Placeholder `CONFIGURE_...` harus tetap fail-closed dan tidak boleh dipakai untuk deployment aktif.
+
+## 4. Route dan frontend
+
+Arahkan request `/api/*` dari setiap Pages origin ke Worker environment yang sesuai. Pastikan URL API yang dipakai frontend STAGING menunjuk ke Worker STAGING, bukan Worker PROD. Verifikasi CORS dari kedua origin Pages STAGING.
+
+## 5. STAGING
+
+Sebelum membuat Pages/Worker STAGING, siapkan Apps Script project dan database STAGING terpisah. Setelah URL Web App dan domain Pages final tersedia, masukkan nilainya ke blok `[env.staging.vars]`, review diff, jalankan CI, lalu deploy hanya dengan `--env staging`.
+
+Ikuti [STAGING Setup Runbook](../../docs/deployment/STAGING_SETUP_RUNBOOK.md) dan [Environment Isolation](../../docs/deployment/ENVIRONMENT_ISOLATION.md).
