@@ -285,3 +285,129 @@ Pemeriksaan tambahan terhadap frontend internal dan modul konfigurasi menemukan 
 - `Users.list` tidak mengembalikan `password_hash`.
 
 Temuan di atas adalah review source, bukan bukti eksploitasi atau hasil penetration test. Risiko perlu dikonfirmasi melalui test terkontrol sebelum implementasi remediasi.
+
+
+## 13. Audit RBAC — pencocokan BRD, data dictionary, seed, dan enforcement backend
+
+**Ruang lingkup pemeriksaan:** Auth.gs, Users.gs, Router.gs, Code.gs, SetupDatabase.gs, DATA_DICTIONARY_TAHAP1.md, BRD §1.3/§1.5, serta Roadmap Tahap 1 §1.2/§1.3/§1.4.
+
+### 13.1 Ringkasan hasil
+
+**Kesimpulan: RBAC baru tersedia pada tingkat kerangka (role seed, relasi user-role, dan pemeriksaan permission per route), tetapi belum memenuhi rancangan hak akses berbasis peran.** Backend belum menghitung permission dari relasi role-permission. Semua pengguna non-Super Admin menerima daftar permission hardcoded yang sama, sehingga perbedaan kewenangan antar-role tidak ditegakkan.
+
+| Area BRD / Tahap 1 | Kebutuhan BRD / roadmap | Hasil yang ditemukan di repository | Status |
+|---|---|---|---|
+| Identitas role | Enam role internal sesuai kebutuhan gereja | Seed enam role: SUPER_ADMIN, PASTOR, SECRETARY, TREASURER, COMMITTEE_HEAD, STAFF | Sesuai — struktur |
+| Relasi pengguna-role | Satu pengguna dapat memiliki role; role dikelola Super Admin | Sheet USER_ROLES dan operasi assign/revoke tersedia | Sebagian — belum seluruh aturan integritas |
+| Matriks role-permission | Hak akses berbeda sesuai tanggung jawab masing-masing role; minimal matriks final untuk role Tahap 1 harus tersedia sebelum implementasi | Tidak ada sheet/relasi ROLE_PERMISSIONS atau mapping eksplisit role → permission; fungsi Auth memakai daftar hardcoded | **Belum sesuai — Critical** |
+| Backend authorization | Setiap endpoint privat memeriksa session dan permission di backend | Code.gs memeriksa route.permission; Router memberi permission pada beberapa route | Sebagian — mekanisme ada, matriks sumbernya salah/tidak lengkap |
+| Least privilege | Pengguna hanya menerima hak yang diperlukan untuk tugasnya | Semua non-Super Admin memperoleh SCHEDULE_VIEW dan REPORT_VIEW; Super Admin memperoleh seluruh permission aktif termasuk permission Tahap 2/3 | **Belum sesuai — Critical** |
+| Pembatasan komisi | Pengurus Komisi hanya melihat data/laporan komisinya sesuai izin | Modul dan endpoint komisi belum ada (Tahap 2); belum ada model scope komisi pada RBAC | Deferred untuk modul; desain scope perlu disiapkan |
+| Direct API deny | Pengguna role A tidak dapat menjalankan fungsi role B melalui pemanggilan API langsung | Pemeriksaan route.permission ada, tetapi role-permission yang dihitung tidak mewakili hak role; belum ada bukti test allow/deny | **Belum terverifikasi / Gap — Critical** |
+| Siklus hidup role | Assign/revoke harus valid, tercatat, dan tidak menghilangkan Super Admin terakhir | Assign mengabaikan kode role yang tidak ditemukan; revoke mengosongkan baris relasi; tidak terlihat guard Super Admin terakhir | Sebagian / Gap |
+| Endpoint tanpa permission spesifik | Endpoint privat tetap harus dibatasi sesuai kebutuhan | auth.me, auth.logout, menu.list hanya memerlukan session; ini dapat diterima untuk fungsi sesi/menu baca jika memang disengaja, tetapi perlu keputusan dan uji | Perlu konfirmasi desain |
+
+### 13.2 Tabel BRD vs implementasi per role
+
+BRD §1.3 menjelaskan kebutuhan utama tiap role, sedangkan BRD §1.5 mensyaratkan dashboard/menu disesuaikan dengan hak akses dan backend memeriksa otorisasi. Tabel berikut membedakan kebutuhan bisnis dari hasil enforcement source saat ini.
+
+| Role | Kebutuhan menurut BRD | Bukti implementasi di repo | Penilaian Tahap 1 |
+|---|---|---|---|
+| Super Admin | Mengelola konfigurasi, akun, role, permission, dan fitur | Role disemai; mendapat semua permission aktif; route untuk users/roles, menu, config, audit tersedia | Sebagian — fitur administrasi dasar ada; semua permission aktif lintas Tahap 2/3 ikut diberikan; tidak ada pengelolaan permission catalog/role matrix yang lengkap |
+| Pendeta/Majelis | Melihat ringkasan dan melakukan persetujuan sesuai kewenangan | Role disemai, tetapi tidak ada mapping permission khusus; mendapat SCHEDULE_VIEW + REPORT_VIEW | Belum sesuai — belum ada hak khusus dan dashboard masih skeleton |
+| Sekretaris/Admin | Mengelola data jemaat, pengumuman, surat, dan administrasi | Role disemai, tetapi tidak ada mapping khusus; mendapat SCHEDULE_VIEW + REPORT_VIEW | Belum sesuai — modul jemaat/pengumuman/surat memang Tahap 2, namun matriks hak minimal seharusnya sudah dirancang |
+| Bendahara Pusat | Mengelola seluruh kas dan transaksi | Role disemai, tetapi tidak ada mapping khusus; mendapat SCHEDULE_VIEW + REPORT_VIEW | Sebagian/Deferred — modul keuangan Tahap 3; hak role belum didefinisikan dan tidak boleh disimpulkan telah diimplementasikan |
+| Pengurus Komisi | Mengelola informasi dan melihat laporan komisinya sesuai izin | Role disemai, tetapi tidak ada mapping khusus atau pembatasan scope komisi | Sebagian/Deferred — modul komisi Tahap 2; desain role dan scope belum ditegakkan |
+| Petugas Pelayanan | Melihat jadwal dan tugas pelayanan sesuai izin | Role disemai; mendapat SCHEDULE_VIEW + REPORT_VIEW | Sebagian — permission jadwal diberikan secara generik, tetapi belum ada endpoint operasional jadwal dan hak tugas yang spesifik |
+
+### 13.3 Matriks permission: katalog vs route backend
+
+Repository memiliki 23 permission di data dictionary dan seed PERMISSIONS. Empat permission ditandai untuk Tahap 1; sisanya adalah katalog tahap berikutnya. Namun seluruh baris seed diberi is_active=TRUE, dan Auth.getUserRolesAndPermissions() memberikan seluruh permission aktif kepada Super Admin tanpa memfilter kolom stage.
+
+| Permission | Tahap di katalog | Route yang ditemukan | Enforcement saat ini |
+|---|---:|---|---|
+| USER_MANAGE | 1 | users.list/create/update/resetPassword; roles.list/assign/revoke | Route memeriksa permission; hanya Super Admin yang secara efektif mendapatkannya |
+| SYSTEM_CONFIG | 1 | config.get/set | Route memeriksa permission; hanya Super Admin yang secara efektif mendapatkannya |
+| MENU_CONFIG | 1 | menu.setStatus | Route memeriksa permission; hanya Super Admin yang secara efektif mendapatkannya |
+| AUDIT_VIEW | 1 | audit.list | Route memeriksa permission; hanya Super Admin yang secara efektif mendapatkannya |
+| MEMBER_READ | 2 | Tidak ditemukan | Belum ada route; deferred |
+| MEMBER_CREATE | 2 | Tidak ditemukan | Belum ada route; deferred |
+| MEMBER_EDIT | 2 | Tidak ditemukan | Belum ada route; deferred |
+| MEMBER_ARCHIVE | 2 | Tidak ditemukan | Belum ada route; deferred |
+| REGISTRATION_REVIEW | 2 | Tidak ditemukan | Belum ada route; deferred |
+| IMPORT_RUN | 2 | Tidak ditemukan | Belum ada route; deferred |
+| COMMITTEE_MANAGE | 2 | Tidak ditemukan | Belum ada route; deferred |
+| SCHEDULE_VIEW | 2 | Tidak ditemukan route internal jadwal | Diberikan kepada semua non-Super Admin dan Super Admin; belum ada endpoint operasional |
+| SCHEDULE_MANAGE | 2 | Tidak ditemukan | Belum ada route; deferred |
+| FINANCE_READ | 3 | Tidak ditemukan | Belum ada route; deferred |
+| FINANCE_WRITE | 3 | Tidak ditemukan | Belum ada route; deferred |
+| FINANCE_VERIFY | 3 | Tidak ditemukan | Belum ada route; deferred |
+| RECEIPT_VIEW | 3 | Tidak ditemukan | Belum ada route; deferred |
+| ANNOUNCE_DRAFT | 2 | Tidak ditemukan | Belum ada route; deferred |
+| ANNOUNCE_APPROVE | 2 | Tidak ditemukan | Belum ada route; deferred |
+| ANNOUNCE_PUBLISH | 2 | Tidak ditemukan | Belum ada route; deferred |
+| EVENT_MANAGE | 2 | Tidak ditemukan | Belum ada route; deferred |
+| REPORT_VIEW | 2 | Tidak ditemukan route laporan internal | Diberikan kepada semua role non-Super Admin dan Super Admin; belum ada endpoint laporan |
+| AI_USE | 3 | Tidak ditemukan | Belum ada route; deferred; AI global default OFF |
+
+**Catatan penting:** permission Tahap 2/3 boleh tercatat di katalog awal, tetapi tidak boleh dianggap sebagai hak operasional yang sudah diterapkan. Perlu definisi eksplisit apakah permission masa depan tetap nonaktif sampai tahapnya dimulai. Pemberian seluruh permission aktif kepada Super Admin saat ini membuat daftar permission Tahap 2/3 ikut masuk ke token/login response, walaupun route modulnya belum tersedia.
+
+### 13.4 Pemeriksaan route privat
+
+| Action | Permission pada Router | Session | Catatan |
+|---|---|---|---|
+| public.info / public.page | Tidak ada | Tidak | Sesuai sebagai endpoint publik |
+| auth.login | Tidak ada | Tidak | Sesuai |
+| auth.logout / auth.me | Tidak ada | Ya | Tidak memerlukan permission spesifik; perlu uji validitas sesi dan pencabutan sesi |
+| users.list/create/update/resetPassword | USER_MANAGE | Ya | Route terlindungi oleh permission |
+| roles.list/assign/revoke | USER_MANAGE | Ya | Route terlindungi; validasi role dan invariant Super Admin perlu diperkuat |
+| menu.list | Tidak ada | Ya | Setiap akun login dapat membaca daftar menu; konfirmasi bahwa ini memang kebijakan |
+| menu.setStatus | MENU_CONFIG | Ya | Route terlindungi oleh permission |
+| config.get/set | SYSTEM_CONFIG | Ya | Route terlindungi oleh permission |
+| audit.list | AUDIT_VIEW | Ya | Route terlindungi oleh permission |
+
+### 13.5 Temuan teknis spesifik
+
+| ID | Temuan | Dampak | Prioritas |
+|---|---|---|---|
+| RBAC-01 | Tidak ada relasi atau mapping ROLE → PERMISSION; getUserRolesAndPermissions() memberi dua permission yang sama untuk semua non-Super Admin | Tidak ada pemisahan kewenangan nyata antar-role | P0 |
+| RBAC-02 | Super Admin memperoleh semua permission is_active=TRUE tanpa filter tahap | Permission masa depan Tahap 2/3 ikut diberikan sebelum modul/aturan terkait siap | P1 |
+| RBAC-03 | assignRolesByCode() mengabaikan role code yang tidak ditemukan, tanpa mengembalikan validation error | Salah ketik/role invalid dapat menghasilkan assignment parsial yang tidak diketahui pemanggil | P1 |
+| RBAC-04 | revokeRole() tidak terlihat mencegah pencabutan role SUPER_ADMIN terakhir | Risiko kehilangan akses administrasi tertinggi | P1 |
+| RBAC-05 | Tidak ada enforcement scope komisi pada source Tahap 1 | Saat modul komisi dibuat, permission global saja tidak cukup untuk membatasi data per komisi | P1 — desain sebelum Tahap 2 |
+| RBAC-06 | Belum ada automated/direct API authorization test untuk matriks role × route | Tidak ada bukti bahwa allow/deny sesuai BRD | P0 — exit gate |
+| RBAC-07 | menu.list, auth.me, auth.logout hanya membutuhkan session, bukan permission khusus | Perlu memastikan informasi yang dikembalikan memang aman untuk seluruh akun aktif | P2 / review policy |
+
+### 13.6 Rekomendasi dan acceptance criteria perbaikan
+
+1. Finalisasi matriks role-permission sebagai artefak eksplisit yang disetujui pemilik proses. Minimal mencakup keenam role dan permission yang relevan; hak Bendahara/Komisi/operasional dapat diberi label tahap berikutnya, tetapi desainnya harus jelas.
+2. Implementasikan sumber mapping yang dapat diaudit (misalnya sheet ROLE_PERMISSIONS atau konfigurasi terkontrol di backend). Jangan menghitung hak berdasarkan kondisi Super Admin versus non-Super Admin.
+3. Terapkan prinsip deny-by-default: role/permission tidak dikenal, nonaktif, atau belum berlaku harus ditolak.
+4. Filter permission berdasarkan status aktif dan tahap penerapan; jangan memberikan permission masa depan hanya karena seed berstatus aktif.
+5. Validasi semua role code sebelum assignment; assignment harus atomik atau gagal seluruhnya jika ada kode tidak valid.
+6. Lindungi Super Admin terakhir agar tidak dapat dinonaktifkan atau kehilangan role tertinggi tanpa prosedur pemulihan yang disetujui.
+7. Rancang scope komisi di backend sebelum modul Tahap 2, sehingga Pengurus Komisi hanya dapat mengakses komisi yang ditugaskan.
+8. Buat test matrix direct API: keenam role × seluruh endpoint privat, termasuk skenario tanpa token, token expired, permission tidak cukup, role nonaktif, dan akun nonaktif.
+
+**Acceptance criteria RBAC Tahap 1:**
+- [ ] Matriks role-permission Tahap 1 disetujui dan tersimpan di repository.
+- [ ] Hak akses berasal dari mapping role-permission, bukan fallback hardcoded.
+- [ ] Setiap route privat memiliki permission yang tepat atau alasan eksplisit mengapa cukup dengan session.
+- [ ] Role A ditolak saat memanggil endpoint yang bukan haknya, termasuk direct API tanpa UI.
+- [ ] Permission masa depan tidak diberikan/dianggap berlaku sebelum tahapnya.
+- [ ] Invalid role assignment ditolak; tidak ada assignment parsial diam-diam.
+- [ ] Super Admin terakhir terlindungi dari revoke/deaktivasi yang mengunci sistem.
+- [ ] Bukti test allow/deny disimpan untuk exit gate Tahap 1.
+
+### 13.7 Referensi source
+
+- BRD CCMS_Master_Requirements_and_Project_Framework.md — §1.3, §1.5, §2.1, §2.2, §4 (RBAC/API design).
+- docs/requirements/ROADMAP_3_TAHAPAN.md — §1.2, §1.3 urutan 1.6 dan 1.10, §1.4 exit criteria.
+- docs/database/DATA_DICTIONARY_TAHAP1.md — §5 ROLES, §6 PERMISSIONS, §7 USER_ROLES.
+- backend/apps-script/Auth.gs — getUserRolesAndPermissions(), login(), me().
+- backend/apps-script/Users.gs — assignRolesByCode(), assignRole(), revokeRole().
+- backend/apps-script/Router.gs — ROUTE_MAP.
+- backend/apps-script/Code.gs — pemeriksaan session dan permission sebelum handler.
+- backend/apps-script/tools/SetupDatabase.gs — seed 6 role dan 23 permission.
+
+Audit ini merupakan pemeriksaan source. Belum ada perubahan aplikasi, data, konfigurasi, maupun pengujian mutasi production.
