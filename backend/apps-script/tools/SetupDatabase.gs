@@ -19,9 +19,9 @@ function setupDatabase() {
     throw new Error('Setup dihentikan: CCMS_SPREADSHEET_ID sudah terisi. Jangan membuat database baru di atas environment yang sudah terpasang. Untuk reset, lakukan prosedur migrasi/reset terpisah dan eksplisit.');
   }
 
-  var envName = String(props.getProperty('CCMS_ENV') || 'DEV').toUpperCase();
+  var envName = String(props.getProperty('CCMS_ENV') || '').toUpperCase();
   if (['DEV', 'STAGING', 'PROD'].indexOf(envName) === -1) {
-    throw new Error('CCMS_ENV harus DEV, STAGING, atau PROD.');
+    throw new Error('CCMS_ENV wajib diatur eksplisit menjadi DEV, STAGING, atau PROD sebelum setup.');
   }
   if (envName === 'PROD' && String(props.getProperty('CCMS_ALLOW_PROD_SETUP') || '').toUpperCase() !== 'TRUE') {
     throw new Error('Setup PROD memerlukan CCMS_ALLOW_PROD_SETUP=TRUE sebagai konfirmasi eksplisit.');
