@@ -2,20 +2,33 @@
  * SetupDatabase — dijalankan SEKALI per environment dari editor Apps Script.
  *
  * Fungsi:
- *  1. Membuat spreadsheet CCMS-<ENV>-DB dengan 8 sheet Tahap 1 + header + seed.
+ *  1. Membuat spreadsheet CCMS-<ENV>-DB dengan 9 sheet Tahap 1 + header + seed.
  *  2. Menghasilkan SESSION_SECRET dan menyimpan CCMS_SPREADSHEET_ID ke Script Properties.
  *  3. Membuat akun Super Admin awal (username: admin, password: dicetak di log).
  *  4. Mencetak langkah berikutnya di log.
  *
- * PENTING: Ganti nama folder Drive (DRIVE_FOLDER_NAME) sesuai environment
- * sebelum menjalankan (DEV / STAGING / PROD).
+ * Environment ditentukan melalui Script Properties CCMS_ENV (DEV/STAGING/PROD).
+ * Setup menolak database yang sudah memiliki CCMS_SPREADSHEET_ID agar tidak
+ * membuat database baru tanpa sengaja. PROD memerlukan konfirmasi eksplisit.
  */
 
-var DRIVE_FOLDER_NAME = 'CCMS/DEV'; // <- sesuaikan per environment
-
 function setupDatabase() {
-  // Ganti nama folder sesuai environment bila perlu, lalu:
-  var ss = SpreadsheetApp.create('CCMS-DEV-DB'); // <- sesuaikan nama per environment
+  var props = PropertiesService.getScriptProperties();
+  var existingSpreadsheetId = props.getProperty('CCMS_SPREADSHEET_ID');
+  if (existingSpreadsheetId) {
+    throw new Error('Setup dihentikan: CCMS_SPREADSHEET_ID sudah terisi. Jangan membuat database baru di atas environment yang sudah terpasang. Untuk reset, lakukan prosedur migrasi/reset terpisah dan eksplisit.');
+  }
+
+  var envName = String(props.getProperty('CCMS_ENV') || '').toUpperCase();
+  if (['DEV', 'STAGING', 'PROD'].indexOf(envName) === -1) {
+    throw new Error('CCMS_ENV wajib diatur eksplisit menjadi DEV, STAGING, atau PROD sebelum setup.');
+  }
+  if (envName === 'PROD' && String(props.getProperty('CCMS_ALLOW_PROD_SETUP') || '').toUpperCase() !== 'TRUE') {
+    throw new Error('Setup PROD memerlukan CCMS_ALLOW_PROD_SETUP=TRUE sebagai konfirmasi eksplisit.');
+  }
+
+  // Nama database mengikuti environment yang disetel pada Script Properties.
+  var ss = SpreadsheetApp.create('CCMS-' + envName + '-DB');
 
   createSheet(ss, 'CONFIG', ['config_key', 'config_value', 'value_type', 'is_secret', 'description', 'updated_at', 'updated_by'], [
     ['CHURCH_NAME', 'Gereja (ganti di setup)', 'STRING', 'FALSE', 'Nama resmi gereja', Db.now(), 'SYSTEM'],
@@ -36,6 +49,14 @@ function setupDatabase() {
     ['AI_PROVIDER', 'GEMINI', 'STRING', 'FALSE', 'Provider AI', Db.now(), 'SYSTEM'],
     ['AI_MODEL', '', 'STRING', 'FALSE', 'Model AI (isi Tahap 3)', Db.now(), 'SYSTEM'],
     ['AI_DAILY_LIMIT', '50', 'NUMBER', 'FALSE', 'Batas pemanggilan AI per hari', Db.now(), 'SYSTEM'],
+    ['CHURCH_HISTORY', '', 'STRING', 'FALSE', 'Ringkasan sejarah gereja untuk portal publik', Db.now(), 'SYSTEM'],
+    ['CHURCH_VISION', '', 'STRING', 'FALSE', 'Visi gereja untuk portal publik', Db.now(), 'SYSTEM'],
+    ['CHURCH_MISSION', '', 'STRING', 'FALSE', 'Misi gereja untuk portal publik', Db.now(), 'SYSTEM'],
+    ['PUBLIC_WORSHIP_SCHEDULE', '', 'STRING', 'FALSE', 'Informasi jadwal ibadah publik', Db.now(), 'SYSTEM'],
+    ['PUBLIC_ANNOUNCEMENTS_INFO', '', 'STRING', 'FALSE', 'Informasi pengumuman publik', Db.now(), 'SYSTEM'],
+    ['PUBLIC_EVENTS_INFO', '', 'STRING', 'FALSE', 'Informasi kegiatan dan kalender publik', Db.now(), 'SYSTEM'],
+    ['PUBLIC_MINISTRY_INFO', '', 'STRING', 'FALSE', 'Informasi komisi dan pelayanan publik', Db.now(), 'SYSTEM'],
+    ['PUBLIC_CONTACT_HOURS', '', 'STRING', 'FALSE', 'Jam layanan/kontak gereja', Db.now(), 'SYSTEM'],
   ]);
 
   createSheet(ss, 'PUBLIC_MENU', ['menu_id', 'menu_key', 'menu_label', 'parent_menu_id', 'url_path', 'status', 'sort_order', 'updated_at', 'updated_by'], [
@@ -45,6 +66,7 @@ function setupDatabase() {
     [Db.newId('MENU'), 'events', 'Kegiatan', '', '/kegiatan', 'ON', 4, Db.now(), 'SYSTEM'],
     [Db.newId('MENU'), 'profile', 'Profil Gereja', '', '/profil', 'ON', 5, Db.now(), 'SYSTEM'],
     [Db.newId('MENU'), 'contact', 'Kontak', '', '/kontak', 'ON', 6, Db.now(), 'SYSTEM'],
+    [Db.newId('MENU'), 'ministries', 'Komisi & Pelayanan', '', '/komisi-pelayanan', 'ON', 7, Db.now(), 'SYSTEM'],
   ]);
 
   createSheet(ss, 'USERS', ['user_id', 'username', 'password_hash', 'full_name', 'email', 'phone', 'is_active', 'must_change_password', 'locked_until', 'consecutive_failures', 'last_login_at', 'created_at', 'created_by', 'updated_at', 'updated_by'], []);
@@ -87,12 +109,12 @@ function setupDatabase() {
   createSheet(ss, 'USER_ROLES', ['user_role_id', 'user_id', 'role_id', 'assigned_at', 'assigned_by'], []);
   createSheet(ss, 'AUDIT_LOG', ['audit_id', 'timestamp', 'session_id', 'user_id', 'username', 'action', 'module', 'record_type', 'record_id', 'detail', 'ip_address'], []);
   createSheet(ss, 'LOGIN_ATTEMPTS', ['attempt_id', 'timestamp', 'username', 'success', 'failure_reason', 'ip_address', 'user_agent'], []);
+  createSheet(ss, 'REVOKED_SESSIONS', ['session_id', 'user_id', 'revoked_at', 'expires_at'], []);
 
-  // Script Properties
-  var props = PropertiesService.getScriptProperties();
+  // Script Properties: simpan pointer database untuk environment project ini.
   props.setProperty('CCMS_SPREADSHEET_ID', ss.getId());
   if (!props.getProperty('SESSION_SECRET')) {
-    var secret = Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Math.random() + Date.now())).replace(/=+$/, '');
+    var secret = [Utilities.getUuid(), Utilities.getUuid(), Utilities.getUuid(), Utilities.getUuid()].join('').replace(/-/g, '');
     props.setProperty('SESSION_SECRET', secret);
   }
 
@@ -100,12 +122,14 @@ function setupDatabase() {
   var root = DriveApp.getRootFolder();
   var folders = root.getFoldersByName('CCMS');
   var parent = folders.hasNext() ? folders.next() : root.createFolder('CCMS');
-  var envName = DRIVE_FOLDER_NAME.split('/')[1] || 'DEV';
   var envFolders = parent.getFoldersByName(envName);
   var envFolder = envFolders.hasNext() ? envFolders.next() : parent.createFolder(envName);
+  // Spreadsheet harus benar-benar dipindahkan ke folder environment, bukan
+  // hanya membuat folder terpisah sementara file tetap berada di My Drive root.
+  DriveApp.getFileById(ss.getId()).moveTo(envFolder);
 
   // Super Admin awal - pakai Db.write untuk konsistensi
-  var adminPassword = 'CCMS-' + Math.random().toString(36).slice(2, 10);
+  var adminPassword = 'CCMS-1' + Utilities.getUuid().replace(/-/g, '').slice(0, 12);
   var adminUserId = Db.newId('USR');
   var roles = ss.getSheetByName('ROLES').getDataRange().getValues();
   var superRoleId = '';

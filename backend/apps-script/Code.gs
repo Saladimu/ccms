@@ -45,6 +45,8 @@ function doPost(e) {
         user_id: payload.sub,
         username: payload.username,
         name: payload.name,
+        session_id: payload.jti,
+        session_expires_at: Utilities.formatDate(new Date(payload.exp * 1000), 'Asia/Jakarta', "yyyy-MM-dd'T'HH:mm:ssXXX"),
         roles: rp.roles,
         permissions: rp.permissions,
       };

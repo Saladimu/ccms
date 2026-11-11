@@ -4,37 +4,75 @@
 
 var Auth = (function () {
 
-  /** Iterasi default hashing (PBKDF2-like SHA-256). */
-  var DEFAULT_ITERATIONS = 50000;
+  // PBKDF2-HMAC-SHA256. Iterasi awal 120.000 sebagai baseline yang
+  // wajib diuji pada Apps Script runtime sebelum rilis ke pengguna.
+  var PBKDF2_ITERATIONS = 120000;
+  var LEGACY_MAX_ITERATIONS = 100000;
+  var PBKDF2_MAX_ITERATIONS = 300000;
 
-  /** Hash password dengan salt hex. Format: sha256$<iterasi>$<salt-hex>$<hash-hex> */
   function hashPassword(password, saltHex, iterations) {
-    iterations = iterations || DEFAULT_ITERATIONS;
     saltHex = saltHex || generateSalt();
-    var text = password + ':' + saltHex;
-    var bytes = Utilities.newBlob(text).getBytes();
+    iterations = iterations || PBKDF2_ITERATIONS;
+    if (!/^[0-9a-f]{32,128}$/i.test(saltHex)) throw new AppError('AUTH_ERROR', 'Salt password tidak valid', 500);
+    if (iterations < 10000 || iterations > PBKDF2_MAX_ITERATIONS) throw new AppError('AUTH_ERROR', 'Parameter KDF tidak valid', 500);
+    var passwordBytes = Utilities.newBlob(String(password)).getBytes();
+    var saltBytes = hexToBytes(saltHex);
+    var block = saltBytes.concat([0, 0, 0, 1]);
+    var u = Utilities.computeHmacSha256Signature(block, passwordBytes);
+    var derived = u.slice();
+    for (var i = 1; i < iterations; i++) {
+      u = Utilities.computeHmacSha256Signature(u, passwordBytes);
+      for (var j = 0; j < derived.length; j++) derived[j] = derived[j] ^ u[j];
+    }
+    return 'pbkdf2-sha256$' + iterations + '$' + saltHex.toLowerCase() + '$' + bytesToHex(derived);
+  }
+
+  function legacyHashPassword(password, saltHex, iterations) {
+    var bytes = Utilities.newBlob(String(password) + ':' + saltHex).getBytes();
     for (var i = 0; i < iterations; i++) {
       bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes);
     }
-    var hashHex = bytesToHex(bytes);
-    return 'sha256$' + iterations + '$' + saltHex + '$' + hashHex;
+    return 'sha256$' + iterations + '$' + saltHex + '$' + bytesToHex(bytes);
   }
 
   function verifyPassword(password, storedHash) {
-    var parts = storedHash.split('$');
-    if (parts.length !== 4 || parts[0] !== 'sha256') return false;
-    var iterations = parseInt(parts[1], 10);
-    var saltHex = parts[2];
-    var computed = hashPassword(password, saltHex, iterations);
-    return computed === storedHash;
+    try {
+      if (typeof storedHash !== 'string') return false;
+      var parts = storedHash.split('$');
+      if (parts.length !== 4) return false;
+      var iterations = Number(parts[1]);
+      if (!Number.isInteger(iterations)) return false;
+      var computed;
+      if (parts[0] === 'pbkdf2-sha256') {
+        if (iterations < 10000 || iterations > PBKDF2_MAX_ITERATIONS) return false;
+        computed = hashPassword(password, parts[2], iterations);
+      } else if (parts[0] === 'sha256') {
+        if (iterations < 1 || iterations > LEGACY_MAX_ITERATIONS) return false;
+        computed = legacyHashPassword(password, parts[2], iterations);
+      } else return false;
+      return constantTimeEqual(computed, storedHash);
+    } catch (e) { return false; }
+  }
+
+  function needsPasswordRehash(storedHash) {
+    return typeof storedHash === 'string' && storedHash.indexOf('sha256$') === 0;
+  }
+
+  function constantTimeEqual(a, b) {
+    if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+    var diff = 0;
+    for (var i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    return diff === 0;
+  }
+
+  function hexToBytes(hex) {
+    var out = [];
+    for (var i = 0; i < hex.length; i += 2) out.push(parseInt(hex.substr(i, 2), 16));
+    return out;
   }
 
   function generateSalt() {
-    var bytes = [];
-    for (var i = 0; i < 16; i++) {
-      bytes.push(Math.floor(Math.random() * 256) - 128);
-    }
-    return bytesToHex(bytes);
+    return Utilities.getUuid().replace(/-/g, '').toLowerCase();
   }
 
   function bytesToHex(bytes) {
@@ -55,6 +93,7 @@ var Auth = (function () {
 
     var payload = {
       sub: user.user_id,
+      jti: Utilities.getUuid(),
       username: user.username,
       name: user.full_name,
       iat: nowSec,
@@ -74,20 +113,59 @@ var Auth = (function () {
   function verifyToken(token) {
     if (!token) throw new AppError('UNAUTHORIZED', 'Sesi tidak ditemukan. Silakan login.', 401);
     var secret = PropertiesService.getScriptProperties().getProperty('SESSION_SECRET');
+    if (!secret) throw new AppError('AUTH_ERROR', 'SESSION_SECRET belum dikonfigurasi', 500);
     var parts = token.split('.');
-    if (parts.length !== 3) throw new AppError('UNAUTHORIZED', 'Format token tidak valid', 401);
-
+    if (parts.length !== 3 || parts.some(function (part) { return !part; })) {
+      throw new AppError('UNAUTHORIZED', 'Format token tidak valid', 401);
+    }
+    var header;
+    var payload;
+    try {
+      header = JSON.parse(base64UrlDecode(parts[0]));
+      payload = JSON.parse(base64UrlDecode(parts[1]));
+    } catch (decodeError) {
+      throw new AppError('UNAUTHORIZED', 'Token tidak valid', 401);
+    }
+    if (!header || header.alg !== 'HS256' || header.typ !== 'JWT') {
+      throw new AppError('UNAUTHORIZED', 'Algoritma token tidak diizinkan', 401);
+    }
     var toSign = parts[0] + '.' + parts[1];
     var expectedSig = base64UrlEncodeBytes(Utilities.computeHmacSha256Signature(toSign, secret));
-    if (expectedSig !== parts[2]) throw new AppError('UNAUTHORIZED', 'Token tidak valid / signature tidak cocok', 401);
-
-    var payloadStr = base64UrlDecode(parts[1]);
-    var payload = JSON.parse(payloadStr);
-
-    var nowSec = Math.floor(Date.now() / 1000);
-    if (payload.exp && payload.exp < nowSec) {
-      throw new AppError('UNAUTHORIZED', 'Sesi telah berakhir. Silakan login kembali.', 401);
+    if (!constantTimeEqual(expectedSig, parts[2])) {
+      throw new AppError('UNAUTHORIZED', 'Token tidak valid / signature tidak cocok', 401);
     }
+    var nowSec = Math.floor(Date.now() / 1000);
+    if (!payload || typeof payload.sub !== 'string' || !payload.sub ||
+        typeof payload.exp !== 'number' || typeof payload.iat !== 'number' ||
+        payload.exp <= nowSec || payload.iat > nowSec + 60 ||
+        payload.exp <= payload.iat || payload.exp - payload.iat > 86400) {
+      throw new AppError('UNAUTHORIZED', 'Sesi tidak valid atau telah berakhir. Silakan login kembali.', 401);
+    }
+
+    // BRD: akun yang dinonaktifkan tidak boleh meneruskan request privat,
+    // termasuk bila token diterbitkan sebelum akun dinonaktifkan.
+    var activeUser = null;
+    Db.readAll('USERS').forEach(function (u) {
+      if (String(u.user_id) === String(payload.sub)) activeUser = u;
+    });
+    if (!activeUser || !(activeUser.is_active === true || String(activeUser.is_active).toUpperCase() === 'TRUE')) {
+      throw new AppError('UNAUTHORIZED', 'Akun tidak aktif atau tidak ditemukan.', 401);
+    }
+    var activeAccess = getUserRolesAndPermissions(payload.sub);
+    if (!activeAccess.roles.length) {
+      throw new AppError('UNAUTHORIZED', 'Akun tidak memiliki role aktif. Hubungi Super Admin.', 401);
+    }
+
+    // Logout revocation is enforced server-side. Legacy JWTs without jti are
+    // assigned a deterministic ID from their signed token during transition.
+    var sessionId = payload.jti || bytesToHex(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, token));
+    var revokedSheet = Db.spreadsheet().getSheetByName('REVOKED_SESSIONS');
+    if (!revokedSheet) throw new AppError('DB_MIGRATION_REQUIRED', 'Database perlu migrasi REVOKED_SESSIONS sebelum autentikasi dapat digunakan.', 503);
+    var revoked = Db.readAll('REVOKED_SESSIONS').some(function (row) {
+      return String(row.session_id) === String(sessionId);
+    });
+    if (revoked) throw new AppError('UNAUTHORIZED', 'Sesi telah diakhiri. Silakan login kembali.', 401);
+    payload.jti = sessionId;
     return payload;
   }
 
@@ -164,18 +242,16 @@ var Auth = (function () {
       throw new AppError('BAD_CREDENTIALS', 'Username atau password salah', 401);
     }
 
-    // Login Sukses -> Reset failures & lock
-    Db.write('USERS', function () {
-      return {
-        update: [{
-          _row: user._row,
-          consecutive_failures: 0,
-          locked_until: null,
-          last_login_at: nowIso,
-          updated_at: nowIso,
-        }],
-      };
-    });
+    // Login sukses: reset lockout dan upgrade hash legacy secara transparan.
+    var successfulLoginUpdate = {
+      _row: user._row,
+      consecutive_failures: 0,
+      locked_until: null,
+      last_login_at: nowIso,
+      updated_at: nowIso,
+    };
+    if (needsPasswordRehash(user.password_hash)) successfulLoginUpdate.password_hash = hashPassword(password);
+    Db.write('USERS', function () { return { update: [successfulLoginUpdate] }; });
 
     recordAttempt(username, true, null, ctx);
 
@@ -223,23 +299,135 @@ var Auth = (function () {
     var roles = Db.readAll('ROLES').filter(function (r) { return roleIds.indexOf(r.role_id) !== -1 && (r.is_active === true || String(r.is_active).toUpperCase() === 'TRUE'); });
     var roleCodes = roles.map(function (r) { return r.role_code; });
 
-    // Untung baseline Tahap 1: jika Super Admin, berikan semua permission active
-    var allPerms = Db.readAll('PERMISSIONS').filter(function (p) { return p.is_active === true || String(p.is_active).toUpperCase() === 'TRUE'; });
+    // Baseline resmi: docs/database/DATA_DICTIONARY_TAHAP1.md §10.
+    // Permission future-stage tidak efektif sebelum stage implementasinya aktif.
+    var ACTIVE_IMPLEMENTATION_STAGE = 1;
+    var rolePermissionMatrix = {
+      SUPER_ADMIN: ['USER_MANAGE', 'SYSTEM_CONFIG', 'MENU_CONFIG', 'AUDIT_VIEW',
+        'MEMBER_READ', 'MEMBER_CREATE', 'MEMBER_EDIT', 'MEMBER_ARCHIVE', 'REGISTRATION_REVIEW', 'IMPORT_RUN',
+        'COMMITTEE_MANAGE', 'SCHEDULE_VIEW', 'SCHEDULE_MANAGE',
+        'FINANCE_READ', 'FINANCE_WRITE', 'FINANCE_VERIFY', 'RECEIPT_VIEW',
+        'ANNOUNCE_DRAFT', 'ANNOUNCE_APPROVE', 'ANNOUNCE_PUBLISH', 'EVENT_MANAGE', 'REPORT_VIEW', 'AI_USE'],
+      PASTOR: ['AUDIT_VIEW', 'MEMBER_READ', 'SCHEDULE_VIEW', 'FINANCE_READ',
+        'ANNOUNCE_DRAFT', 'ANNOUNCE_APPROVE', 'ANNOUNCE_PUBLISH', 'REPORT_VIEW', 'AI_USE'],
+      SECRETARY: ['MEMBER_READ', 'MEMBER_CREATE', 'MEMBER_EDIT', 'MEMBER_ARCHIVE',
+        'REGISTRATION_REVIEW', 'IMPORT_RUN', 'SCHEDULE_VIEW', 'SCHEDULE_MANAGE',
+        'RECEIPT_VIEW', 'ANNOUNCE_DRAFT', 'ANNOUNCE_PUBLISH', 'EVENT_MANAGE', 'REPORT_VIEW', 'AI_USE'],
+      TREASURER: ['FINANCE_READ', 'FINANCE_WRITE', 'FINANCE_VERIFY', 'RECEIPT_VIEW', 'REPORT_VIEW', 'AI_USE'],
+      COMMITTEE_HEAD: ['MEMBER_READ', 'COMMITTEE_MANAGE', 'SCHEDULE_VIEW', 'SCHEDULE_MANAGE',
+        'ANNOUNCE_DRAFT', 'ANNOUNCE_PUBLISH', 'EVENT_MANAGE', 'REPORT_VIEW', 'AI_USE'],
+      STAFF: ['SCHEDULE_VIEW'],
+    };
+
+    var allPerms = Db.readAll('PERMISSIONS').filter(function (p) {
+      var active = p.is_active === true || String(p.is_active).toUpperCase() === 'TRUE';
+      var stage = Number(p.stage || 1);
+      return active && stage <= ACTIVE_IMPLEMENTATION_STAGE;
+    });
+    var activeCodes = allPerms.map(function (p) { return p.permission_code; });
     var permCodes = [];
 
-    if (roleCodes.indexOf('SUPER_ADMIN') !== -1) {
-      permCodes = allPerms.map(function (p) { return p.permission_code; });
-    } else {
-      // Pembatasan role sederhana untuk role dasar
-      permCodes = ['SCHEDULE_VIEW', 'REPORT_VIEW'];
-    }
+    roleCodes.forEach(function (roleCode) {
+      var grants = rolePermissionMatrix[roleCode] || [];
+      grants.forEach(function (code) {
+        if (activeCodes.indexOf(code) !== -1 && permCodes.indexOf(code) === -1) permCodes.push(code);
+      });
+    });
 
     return { roles: roleCodes, permissions: permCodes };
   }
 
+  /** Handler auth.changePassword — wajib mengganti password awal / password sendiri. */
+  function changePassword(ctx) {
+    var currentPassword = String(ctx.payload.current_password || '');
+    var newPassword = String(ctx.payload.new_password || '');
+    if (!currentPassword || !newPassword) {
+      throw new AppError('VALIDATION', 'Password lama dan password baru wajib diisi', 400);
+    }
+    if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      throw new AppError('VALIDATION', 'Password baru minimal 8 karakter dan wajib mengandung huruf serta angka', 400);
+    }
+
+    var users = Db.readAll('USERS');
+    var target = null;
+    users.forEach(function (u) {
+      if (String(u.user_id) === String(ctx.user.user_id)) target = u;
+    });
+    if (!target) throw new AppError('NOT_FOUND', 'User tidak ditemukan', 404);
+    if (!(target.is_active === true || String(target.is_active).toUpperCase() === 'TRUE')) {
+      throw new AppError('UNAUTHORIZED', 'Akun tidak aktif.', 401);
+    }
+    if (!verifyPassword(currentPassword, target.password_hash)) {
+      throw new AppError('BAD_CREDENTIALS', 'Password lama tidak sesuai', 401);
+    }
+    if (verifyPassword(newPassword, target.password_hash)) {
+      throw new AppError('VALIDATION', 'Password baru harus berbeda dari password lama', 400);
+    }
+
+    var sessionId = String(ctx.user.session_id || '');
+    if (!sessionId) throw new AppError('UNAUTHORIZED', 'ID sesi tidak tersedia. Silakan login kembali.', 401);
+
+    var nowIso = Db.now();
+    Db.write('USERS', function () {
+      return {
+        update: [{
+          _row: target._row,
+          password_hash: hashPassword(newPassword),
+          must_change_password: false,
+          consecutive_failures: 0,
+          locked_until: null,
+          updated_at: nowIso,
+          updated_by: ctx.user.user_id,
+        }],
+      };
+    });
+
+    // Cabut sesi saat ini; pengguna harus login kembali dengan password baru.
+    var alreadyRevoked = Db.readAll('REVOKED_SESSIONS').some(function (row) {
+      return String(row.session_id) === sessionId;
+    });
+    if (!alreadyRevoked) {
+      Db.write('REVOKED_SESSIONS', function () {
+        return {
+          append: [{
+            session_id: sessionId,
+            user_id: ctx.user.user_id,
+            revoked_at: nowIso,
+            expires_at: ctx.user.session_expires_at || '',
+          }],
+        };
+      });
+    }
+
+    Audit.log(ctx, 'PASSWORD_CHANGE', 'AUTH', 'USERS', ctx.user.user_id, {
+      username: ctx.user.username,
+      must_change_password: false,
+      session_revoked: true,
+    });
+    return { passwordChanged: true, must_change_password: false, reauthenticationRequired: true };
+  }
+
   /** Handler auth.logout */
   function logout(ctx) {
-    Audit.log(ctx, 'LOGOUT', 'AUTH', 'USERS', ctx.user.user_id, { username: ctx.user.username });
+    var sessionId = ctx.user.session_id;
+    if (!sessionId) throw new AppError('UNAUTHORIZED', 'ID sesi tidak tersedia. Silakan login kembali.', 401);
+
+    var existing = Db.readAll('REVOKED_SESSIONS').some(function (row) {
+      return String(row.session_id) === String(sessionId);
+    });
+    if (!existing) {
+      Db.write('REVOKED_SESSIONS', function () {
+        return {
+          append: [{
+            session_id: sessionId,
+            user_id: ctx.user.user_id,
+            revoked_at: Db.now(),
+            expires_at: ctx.user.session_expires_at || '',
+          }],
+        };
+      });
+    }
+    Audit.log(ctx, 'LOGOUT', 'AUTH', 'USERS', ctx.user.user_id, { username: ctx.user.username, session_revoked: true });
     return { loggedOut: true };
   }
 
@@ -264,8 +452,10 @@ var Auth = (function () {
   return {
     hashPassword: hashPassword,
     verifyPassword: verifyPassword,
+    needsPasswordRehash: needsPasswordRehash,
     verifyToken: verifyToken,
     login: login,
+    changePassword: changePassword,
     logout: logout,
     me: me,
     getUserRolesAndPermissions: getUserRolesAndPermissions,

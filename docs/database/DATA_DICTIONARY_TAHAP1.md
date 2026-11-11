@@ -3,7 +3,7 @@
 **Versi:** 1.0
 **Tanggal:** 9 November 2026
 **Status:** Disetujui sebagai dasar implementasi Tahap 1
-**Sheet yang dicakup:** `CONFIG`, `PUBLIC_MENU`, `USERS`, `ROLES`, `PERMISSIONS`, `USER_ROLES`, `AUDIT_LOG`, `LOGIN_ATTEMPTS`
+**Sheet yang dicakup:** `CONFIG`, `PUBLIC_MENU`, `USERS`, `ROLES`, `PERMISSIONS`, `USER_ROLES`, `AUDIT_LOG`, `LOGIN_ATTEMPTS`, `REVOKED_SESSIONS`
 
 Sheet untuk Tahap 2 (jemaat/komisi/pengumuman) dan Tahap 3 (keuangan) akan didokumentasikan saat masing-masing tahap dimulai (mengikuti roadmap).
 
@@ -47,7 +47,7 @@ Pengaturan sistem key-value. Baca cepat (di-cache), tulis hanya Super Admin via 
 |---|---|---|---|
 | `config_key` | STRING | Ya | Kunci unik (lihat daftar kunci). Huruf besar + underscore. |
 | `config_value` | STRING | Ya | Nilai disimpan sebagai teks; interpretasi sesuai `value_type`. |
-| `value_type` | ENUM | Ya | `STRING` / `NUMBER` / `BOOLEAN` / `JSON` |
+| `value_type` | ENUM | Ya | `STRING` / `NUMBER` / `BOOLEAN` / `JSON` / `ENUM` |
 | `is_secret` | BOOLEAN | Ya | `TRUE` bila nilai sensitif (mis. tidak pernah dikirim ke frontend apa pun). |
 | `description` | STRING | Tidak | Penjelasan untuk admin. |
 | `updated_at` | TIMESTAMP | Ya | Waktu perubahan terakhir. |
@@ -77,6 +77,14 @@ Unik: `config_key`.
 | `AI_PROVIDER` | STRING | `GEMINI` | — |
 | `AI_MODEL` | STRING | *(isi Tahap 3)* | Nama model Gemini |
 | `AI_DAILY_LIMIT` | NUMBER | `50` | Batas pemanggilan AI per hari |
+| `CHURCH_HISTORY` | STRING | *(isi saat setup)* | Ringkasan sejarah gereja untuk portal publik |
+| `CHURCH_VISION` | STRING | *(isi saat setup)* | Visi gereja untuk portal publik |
+| `CHURCH_MISSION` | STRING | *(isi saat setup)* | Misi gereja untuk portal publik |
+| `PUBLIC_WORSHIP_SCHEDULE` | STRING | *(isi saat setup)* | Informasi jadwal ibadah publik |
+| `PUBLIC_ANNOUNCEMENTS_INFO` | STRING | *(isi saat setup)* | Informasi pengumuman publik sementara sebelum modul Tahap 2 |
+| `PUBLIC_EVENTS_INFO` | STRING | *(isi saat setup)* | Informasi kegiatan dan kalender publik sementara sebelum modul Tahap 2 |
+| `PUBLIC_MINISTRY_INFO` | STRING | *(isi saat setup)* | Informasi komisi dan pelayanan publik |
+| `PUBLIC_CONTACT_HOURS` | STRING | *(isi saat setup)* | Jam layanan/kontak gereja |
 
 > Kunci baru hanya boleh ditambahkan lewat perubahan yang dicatat di change log dokumen induk.
 
@@ -89,7 +97,7 @@ Menu navigasi portal publik. Status ditegakkan di backend (endpoint halaman pun 
 | Kolom | Tipe | Wajib | Aturan / Keterangan |
 |---|---|---|---|
 | `menu_id` | STRING | Ya | ID unik, prefix `MENU`. |
-| `menu_key` | STRING | Ya | Kunci unik stabil untuk kode: `home`, `schedule`, `announcements`, `events`, `profile`, `contact`. |
+| `menu_key` | STRING | Ya | Kunci unik stabil untuk kode: `home`, `schedule`, `announcements`, `events`, `profile`, `contact`, `ministries`. |
 | `menu_label` | STRING | Ya | Label tampil di navigasi (Bahasa Indonesia). |
 | `parent_menu_id` | STRING | Tidak | Untuk submenu; `NULL` bila level 1. |
 | `url_path` | STRING | Ya | Path relatif portal, contoh `/jadwal`. |
@@ -100,7 +108,7 @@ Menu navigasi portal publik. Status ditegakkan di backend (endpoint halaman pun 
 
 Unik: `menu_key`.
 
-### Seed data (6 menu level 1)
+### Seed data (7 menu level 1)
 
 | menu_key | menu_label | url_path | sort_order |
 |---|---|---|---|
@@ -110,6 +118,8 @@ Unik: `menu_key`.
 | `events` | Kegiatan | `/kegiatan` | 4 |
 | `profile` | Profil Gereja | `/profil` | 5 |
 | `contact` | Kontak | `/kontak` | 6 |
+| `ministries` | Komisi & Pelayanan | `/komisi-pelayanan` | 7 |
+| `ministries` | Komisi & Pelayanan | `/komisi-pelayanan` | 7 |
 
 ---
 
@@ -121,7 +131,7 @@ Akun login internal (pengurus/petugas). **Terpisah** dari data jemaat.
 |---|---|---|---|
 | `user_id` | STRING | Ya | ID unik, prefix `USR`. |
 | `username` | STRING | Ya | Unik, 3–32 karakter, `[a-z0-9._]`, lowercase. |
-| `password_hash` | STRING | Ya | Format `sha256$<iterasi>$<salt-hex>$<hash-hex>`. Lihat aturan hashing di bawah. |
+| `password_hash` | STRING | Ya | Format baru `pbkdf2-sha256$<iterasi>$<salt-hex>$<hash-hex>`; hash lama `sha256$...` hanya diterima untuk verifikasi dan di-upgrade setelah login sukses. |
 | `full_name` | STRING | Ya | Nama lengkap. |
 | `email` | STRING | Tidak | Email kontak (untuk notifikasi, bukan login). |
 | `phone` | STRING | Tidak | — |
@@ -144,6 +154,17 @@ Unik: `username`.
 - Hash disimpan sebagai hex lowercase.
 - Password minimal 8 karakter (wajib huruf + angka); verifikasi dilakukan di backend saat create/reset.
 - Password tidak pernah disimpan/dikirim dalam bentuk plaintext; endpoint login hanya mengembalikan status sukses/gagal.
+
+---
+
+### Aturan password hashing dan migrasi
+
+- Hash baru memakai PBKDF2-HMAC-SHA256 dengan salt acak 16 byte (hex 32 karakter) dan baseline 120.000 iterasi.
+- Format penyimpanan: `pbkdf2-sha256$120000$<salt-hex>$<derived-key-hex>`.
+- Verifikasi hash legacy `sha256$<iterasi>$<salt-hex>$<hash-hex>` hanya untuk kompatibilitas akun existing; setelah login sukses hash ditulis ulang ke format PBKDF2.
+- Hash malformed, algoritma tidak dikenal, atau parameter iterasi di luar batas ditolak.
+- Runtime benchmark pada Apps Script wajib dilakukan sebelum rilis. Jika proses hash/verify terlalu lambat atau timeout, hentikan rilis dan evaluasi arsitektur KDF; jangan menurunkan iterasi tanpa keputusan keamanan.
+- Password plaintext tidak boleh ditulis ke log, audit, atau response API.
 
 ---
 
@@ -326,3 +347,19 @@ Permission Tahap 2/3 akan dimatikan secara fungsional hingga tahapnya dikerjakan
 6. Migrasi skema di masa depan: setiap perubahan kolom baru wajib lewat change log + update dokumen ini + versi data dictionary.
 
 **Akhir dokumen.**
+
+
+## 12. REVOKED_SESSIONS
+
+Ledger pencabutan sesi server-side untuk memenuhi ketentuan logout pada BRD §1.11.
+
+| Kolom | Tipe | Wajib | Aturan / Keterangan |
+|---|---|---|---|
+| `session_id` | STRING | Ya | ID sesi dari JWT `jti`; untuk JWT lama tanpa `jti`, backend menggunakan hash token sebagai ID transisi. |
+| `user_id` | STRING | Ya | FK → `USERS.user_id`. |
+| `revoked_at` | TIMESTAMP | Ya | Waktu logout/pencabutan sesi. |
+| `expires_at` | TIMESTAMP | Ya | Waktu kedaluwarsa token; digunakan untuk retensi dan pembersihan ledger. |
+
+Unik: `session_id`. Baris revocation tidak boleh dihapus sebelum token terkait kedaluwarsa. Pembersihan record expired dilakukan melalui prosedur maintenance server-side yang terpisah.
+
+**Migrasi database existing:** jalankan `migrateSessionRevocationSheet()` satu kali per environment setelah memverifikasi `CCMS_ENV`, `CCMS_SPREADSHEET_ID`, backup, dan persetujuan. Untuk PROD wajib set `CCMS_ALLOW_SCHEMA_MIGRATION=TRUE` hanya selama prosedur migrasi yang disetujui. Jangan jalankan migrasi production dari branch development tanpa rencana deployment dan backup.

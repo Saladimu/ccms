@@ -19,6 +19,7 @@ var Router = (function () {
     // Private (butuh session + permission)
     'auth.logout':        { module: 'Auth',     handler: 'logout',        permission: null, needsSession: true },
     'auth.me':            { module: 'Auth',     handler: 'me',            permission: null, needsSession: true },
+    'auth.changePassword': { module: 'Auth',     handler: 'changePassword', permission: null, needsSession: true },
 
     'users.list':         { module: 'Users',    handler: 'list',          permission: 'USER_MANAGE', needsSession: true },
     'users.create':       { module: 'Users',    handler: 'create',        permission: 'USER_MANAGE', needsSession: true },
@@ -45,7 +46,8 @@ var Router = (function () {
     }
 
     // Resolve handler function dynamically from global scope at runtime
-    var mod = this[route.module]; // global object (Apps Script global scope)
+    var root = (typeof globalThis !== 'undefined') ? globalThis : this;
+    var mod = root[route.module]; // module pada global scope Apps Script V8
     if (!mod || typeof mod[route.handler] !== 'function') {
       throw new AppError('INTERNAL_ERROR', 'Handler tidak ditemukan: ' + route.module + '.' + route.handler, 500);
     }
