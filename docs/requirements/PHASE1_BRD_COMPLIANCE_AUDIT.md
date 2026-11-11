@@ -517,3 +517,27 @@ Gap yang sebenarnya:
 
 Tindakan: remediasi harus mengimplementasikan Data Dictionary §10 secara persis. Jangan membuat matriks alternatif yang bertentangan. Bila ada keputusan bisnis yang perlu diubah, update Data Dictionary dan catat di change log terlebih dahulu.
 
+
+
+## 16. Status remediasi awal terhadap temuan audit
+
+Perubahan source berikut telah dibuat pada branch `remediation/phase1-brd-alignment`. Status "implemented" di bawah berarti perubahan sudah masuk source branch, **bukan** berarti runtime telah lulus.
+
+| Temuan | Perubahan source | Status verifikasi |
+|---|---|---|
+| RBAC hardcoded | Auth menerapkan matriks resmi Data Dictionary §10 dan stage gate Tahap 1 | Menunggu automated/direct API test |
+| Akun nonaktif masih dapat memakai token | verifyToken memeriksa user aktif pada setiap request privat | Menunggu test runtime |
+| Role tidak valid/role terakhir | Validasi role assignment, role aktif, dan proteksi Super Admin aktif terakhir | Menunggu test runtime |
+| Logout tidak mencabut token | JWT jti, ledger REVOKED_SESSIONS, logout append revocation, verifier deny token tercabut | Migration dan test per environment wajib |
+| Setup database tidak environment-aware/idempotent | CCMS_ENV, guard spreadsheet existing, explicit PROD confirmation, pindah spreadsheet ke folder environment | Menunggu uji setup di DEV/STAGING |
+| Konfigurasi tanpa validasi dan audit nilai mentah | Validasi type/enum/angka/boolean/JSON; secret ditolak; audit hanya mencatat key/type | Menunggu test API |
+| Public Portal enam menu dan halaman placeholder | Seed tujuh menu; konten awal halaman dapat diisi melalui CONFIG | Konten aktual dan runtime smoke test belum diverifikasi |
+| Potensi XSS pada konten portal | Public Portal memakai DOM API dan textContent untuk konten API | Menunggu test payload XSS |
+| Password salt dan policy | Salt tidak lagi menggunakan Math.random; password minimal 8 karakter dengan huruf dan angka | KDF masih iterated SHA-256; belum lulus security review |
+
+### 16.1 Catatan deployment dan migration
+
+- Tidak ada perubahan pada `main`, Cloudflare Worker deployment, Apps Script deployment, Spreadsheet, Script Properties, atau data production.
+- Perubahan session revocation menambahkan sheet `REVOKED_SESSIONS`. Database existing wajib dimigrasikan secara terencana sebelum kode baru di-deploy. Script migrasi memblokir PROD kecuali flag konfirmasi khusus diaktifkan.
+- SetupDatabase sekarang menolak eksekusi bila `CCMS_SPREADSHEET_ID` sudah ada. Jangan menghapus property tersebut sebagai jalan pintas untuk menjalankan setup ulang.
+- Tahap berikutnya harus menambahkan/menjalankan test suite untuk login, role matrix, direct API, logout/revocation, akun nonaktif, config validation, public page status, dan XSS.
