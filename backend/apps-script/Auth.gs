@@ -337,6 +337,75 @@ var Auth = (function () {
     return { roles: roleCodes, permissions: permCodes };
   }
 
+  /** Handler auth.changePassword — wajib mengganti password awal / password sendiri. */
+  function changePassword(ctx) {
+    var currentPassword = String(ctx.payload.current_password || '');
+    var newPassword = String(ctx.payload.new_password || '');
+    if (!currentPassword || !newPassword) {
+      throw new AppError('VALIDATION', 'Password lama dan password baru wajib diisi', 400);
+    }
+    if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      throw new AppError('VALIDATION', 'Password baru minimal 8 karakter dan wajib mengandung huruf serta angka', 400);
+    }
+
+    var users = Db.readAll('USERS');
+    var target = null;
+    users.forEach(function (u) {
+      if (String(u.user_id) === String(ctx.user.user_id)) target = u;
+    });
+    if (!target) throw new AppError('NOT_FOUND', 'User tidak ditemukan', 404);
+    if (!(target.is_active === true || String(target.is_active).toUpperCase() === 'TRUE')) {
+      throw new AppError('UNAUTHORIZED', 'Akun tidak aktif.', 401);
+    }
+    if (!verifyPassword(currentPassword, target.password_hash)) {
+      throw new AppError('BAD_CREDENTIALS', 'Password lama tidak sesuai', 401);
+    }
+    if (verifyPassword(newPassword, target.password_hash)) {
+      throw new AppError('VALIDATION', 'Password baru harus berbeda dari password lama', 400);
+    }
+
+    var nowIso = Db.now();
+    Db.write('USERS', function () {
+      return {
+        update: [{
+          _row: target._row,
+          password_hash: hashPassword(newPassword),
+          must_change_password: false,
+          consecutive_failures: 0,
+          locked_until: null,
+          updated_at: nowIso,
+          updated_by: ctx.user.user_id,
+        }],
+      };
+    });
+
+    // Cabut sesi saat ini; pengguna harus login kembali dengan password baru.
+    var sessionId = String(ctx.user.session_id || '');
+    if (!sessionId) throw new AppError('UNAUTHORIZED', 'ID sesi tidak tersedia. Silakan login kembali.', 401);
+    var alreadyRevoked = Db.readAll('REVOKED_SESSIONS').some(function (row) {
+      return String(row.session_id) === sessionId;
+    });
+    if (!alreadyRevoked) {
+      Db.write('REVOKED_SESSIONS', function () {
+        return {
+          append: [{
+            session_id: sessionId,
+            user_id: ctx.user.user_id,
+            revoked_at: nowIso,
+            expires_at: ctx.user.session_expires_at || '',
+          }],
+        };
+      });
+    }
+
+    Audit.log(ctx, 'PASSWORD_CHANGE', 'AUTH', 'USERS', ctx.user.user_id, {
+      username: ctx.user.username,
+      must_change_password: false,
+      session_revoked: true,
+    });
+    return { passwordChanged: true, must_change_password: false, reauthenticationRequired: true };
+  }
+
   /** Handler auth.logout */
   function logout(ctx) {
     var sessionId = ctx.user.session_id;
@@ -385,6 +454,7 @@ var Auth = (function () {
     needsPasswordRehash: needsPasswordRehash,
     verifyToken: verifyToken,
     login: login,
+    changePassword: changePassword,
     logout: logout,
     me: me,
     getUserRolesAndPermissions: getUserRolesAndPermissions,
