@@ -80,3 +80,25 @@ Daftar ditampilkan dari Low → Medium → High → Critical sesuai permintaan. 
 ## Catatan koreksi hasil audit RBAC
 
 Data Dictionary Tahap 1 §10 ternyata **sudah memiliki matriks Role → Permission baseline** untuk enam role dan 23 permission. Karena itu, pernyataan audit sebelumnya bahwa matriks tidak ditemukan perlu dikoreksi: gap sebenarnya adalah matriks tersebut belum diterapkan oleh `Auth.getUserRolesAndPermissions()`, yang masih memakai fallback hardcoded. Implementasi wajib mengikuti matriks resmi yang sudah ada; tidak perlu mendesain matriks baru kecuali ditemukan konflik yang perlu keputusan pemilik.
+
+
+## Progress implementasi branch
+
+**Status:** In Progress — perubahan source awal sudah dibuat, belum siap merge/deploy karena automated/runtime test belum dijalankan.
+
+| Task | Status | Implementasi awal |
+|---|---|---|
+| C-01 / H-01 | Implemented — Testing Required | Auth menerapkan matriks resmi Data Dictionary §10 dan hanya mengaktifkan permission dengan `stage <= 1`; direct API test masih pending |
+| C-03 / H-07 | Implemented — Testing Required | verifyToken memeriksa SESSION_SECRET, expiry, keberadaan user, dan status akun aktif pada setiap request privat; role aktif juga diperiksa |
+| H-02 | Implemented — Testing Required | Role assignment memvalidasi semua kode dan status role; operasi melindungi Super Admin aktif terakhir |
+| C-04 / H-09 | Implemented — Migration & Testing Required | JWT memiliki `jti`; logout menulis ledger REVOKED_SESSIONS; verifier menolak token yang sudah dicabut; migration script disediakan |
+| C-02 | Partial — Remaining KDF Review | Salt tidak lagi menggunakan Math.random; kebijakan password minimal 8 karakter dengan huruf dan angka diterapkan. Algoritma existing masih iterated SHA-256, bukan PBKDF2 standar; keputusan KDF/migrasi hash tetap perlu diselesaikan |
+| C-06 / H-06 | Partial — Environment Proof Required | Setup membaca CCMS_ENV, menolak database existing, mengunci setup PROD dengan flag eksplisit, dan memindahkan spreadsheet ke folder environment. Worker STAGING/PROD dan isolasi runtime masih pending |
+| H-03 / C-05 | Implemented — Content & Runtime Verification Required | Seed tujuh menu BRD; halaman publik mengambil konten awal dari CONFIG; konten gereja aktual perlu diisi dan smoke test masih pending |
+| H-04 | Implemented — Testing Required | Public Portal merender konten API menggunakan textContent/DOM API, bukan interpolasi HTML |
+| H-05 | Implemented — Testing Required | Config API memvalidasi tipe, enum, angka, boolean, JSON; menolak secret dan tidak mencatat nilai konfigurasi di audit |
+| M-06 / C-08 | Pending | UAT dua role, deployment/rollback, dan exit-gate evidence belum dilakukan |
+
+**Peringatan migrasi:** perubahan logout memerlukan sheet `REVOKED_SESSIONS`. Database yang sudah ada harus menjalankan `migrateSessionRevocationSheet()` per environment setelah backup dan verifikasi environment. Jangan deploy kode auth baru ke environment yang belum memiliki sheet tersebut; backend sengaja fail-closed dengan error `DB_MIGRATION_REQUIRED`.
+
+**Peringatan KDF:** perbaikan salt dan komposisi password belum menyelesaikan evaluasi algoritma hash. Jangan menyebut kontrol password sudah sepenuhnya lulus sebelum strategi KDF standar, backward compatibility, rehash, dan uji beban Apps Script disepakati serta diuji.
