@@ -157,16 +157,18 @@ var Users = (function () {
   }
 
   function assignRole(ctx) {
-    var userId = ctx.payload.user_id;
-    var roleCode = ctx.payload.role_code;
+    var userId = String(ctx.payload.user_id || '');
+    var roleCode = String(ctx.payload.role_code || '').trim().toUpperCase();
+    if (!userId || !roleCode) throw new AppError('VALIDATION', 'user_id dan role_code wajib diisi', 400);
     assignRolesByCode(userId, [roleCode], ctx.user.user_id);
     Audit.log(ctx, 'ROLE_ASSIGN', 'USER', 'USER_ROLES', userId, { role_code: roleCode });
     return { assigned: true };
   }
 
   function revokeRole(ctx) {
-    var userId = ctx.payload.user_id;
-    var roleCode = ctx.payload.role_code;
+    var userId = String(ctx.payload.user_id || '');
+    var roleCode = String(ctx.payload.role_code || '').trim().toUpperCase();
+    if (!userId || !roleCode) throw new AppError('VALIDATION', 'user_id dan role_code wajib diisi', 400);
     var roles = Db.readAll('ROLES');
     var roleId = null;
     roles.forEach(function (r) { if (r.role_code === roleCode) roleId = r.role_id; });
