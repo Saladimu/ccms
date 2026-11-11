@@ -101,10 +101,141 @@
 
   <script>
     const API_BASE = 'https://ccms-api.ccms-gereja.workers.dev/api/';
-    let token = localStorage.getItem('ccms_token') || '';
+    let token = sessionStorage.getItem('ccms_token') || '';
+    let currentUser = null;
 
     const loginScreen = document.getElementById('login-screen');
     const dashboardScreen = document.getElementById('dashboard-screen');
+
+    function setText(id, value) {
+      document.getElementById(id).textContent = value == null ? '' : String(value);
+    }
+
+    async function api(action, payload) {
+      const res = await fetch(API_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          payload: payload || {},
+          meta: token ? { token } : {}
+        })
+      });
+      return res.json();
+    }
+
+    function clearSession() {
+      token = '';
+      currentUser = null;
+      sessionStorage.removeItem('ccms_token');
+      dashboardScreen.style.display = 'none';
+      loginScreen.style.display = 'block';
+    }
+
+    function renderPanel(title, nodes) {
+      setText('page-title', title);
+      const wrap = document.createElement('div');
+      wrap.style.background = 'white';
+      wrap.style.padding = '1.5rem';
+      wrap.style.borderRadius = '8px';
+      nodes.forEach(node => wrap.appendChild(node));
+      document.getElementById('dashboard-content').replaceChildren(wrap);
+    }
+
+    function addNav(label, handler) {
+      const a = document.createElement('a');
+      a.href = '#';
+      a.textContent = label;
+      a.onclick = (e) => { e.preventDefault(); handler(); };
+      document.getElementById('nav-items').appendChild(a);
+    }
+
+    function showDashboard(user) {
+      currentUser = user;
+      loginScreen.style.display = 'none';
+      dashboardScreen.style.display = 'block';
+      setText('user-display', (user.full_name || user.username) + ' (@' + user.username + ')');
+      setText('user-role-badge', (user.roles || []).join(', ') || '-');
+      const nav = document.getElementById('nav-items');
+      nav.replaceChildren();
+      addNav('Dashboard', showHome);
+      if ((user.permissions || []).includes('USER_MANAGE')) addNav('Pengguna & Role', showUsers);
+      if ((user.permissions || []).includes('MENU_CONFIG')) addNav('Menu Publik', showMenus);
+      if ((user.permissions || []).includes('SYSTEM_CONFIG')) addNav('Konfigurasi', showConfig);
+      if ((user.permissions || []).includes('AUDIT_VIEW')) addNav('Audit Log', showAudit);
+      showHome();
+    }
+
+    function showHome() {
+      const heading = document.createElement('h3');
+      heading.textContent = 'Selamat datang di Internal CCMS';
+      const roleLine = document.createElement('p');
+      roleLine.textContent = 'Anda masuk sebagai: ' + ((currentUser && currentUser.roles) || []).join(', ');
+      const permLine = document.createElement('div');
+      permLine.style.fontSize = '0.85rem';
+      permLine.style.color = '#666';
+      permLine.textContent = 'Fungsi Tahap 1 yang tersedia: ' + ((currentUser && currentUser.permissions) || []).join(', ');
+      const note = document.createElement('p');
+      note.textContent = 'Menu hanya menampilkan fungsi yang dapat dipakai pada Tahap 1.';
+      renderPanel('Dashboard', [heading, roleLine, permLine, note]);
+    }
+
+    async function showUsers() {
+      const json = await api('users.list');
+      if (!json.ok) { renderPanel('Pengguna & Role', [document.createTextNode(json.error.message)]); return; }
+      const heading = document.createElement('h3');
+      heading.textContent = 'Daftar pengguna';
+      const list = document.createElement('ul');
+      (json.data || []).forEach(user => {
+        const item = document.createElement('li');
+        item.textContent = user.username + ' — ' + (user.full_name || '') + ' — ' + (user.roles || []).join(', ');
+        list.appendChild(item);
+      });
+      renderPanel('Pengguna & Role', [heading, list]);
+    }
+
+    async function showMenus() {
+      const json = await api('menu.list');
+      if (!json.ok) { renderPanel('Menu Publik', [document.createTextNode(json.error.message)]); return; }
+      const heading = document.createElement('h3');
+      heading.textContent = 'Status menu publik';
+      const list = document.createElement('ul');
+      (json.data || []).forEach(menu => {
+        const item = document.createElement('li');
+        item.textContent = menu.menu_key + ' — ' + menu.menu_label + ' — ' + menu.status;
+        list.appendChild(item);
+      });
+      renderPanel('Menu Publik', [heading, list]);
+    }
+
+    async function showConfig() {
+      const json = await api('config.get');
+      if (!json.ok) { renderPanel('Konfigurasi', [document.createTextNode(json.error.message)]); return; }
+      const heading = document.createElement('h3');
+      heading.textContent = 'Konfigurasi non-rahasia';
+      const list = document.createElement('ul');
+      Object.keys(json.data || {}).forEach(key => {
+        const item = document.createElement('li');
+        const row = json.data[key];
+        item.textContent = key + ' = ' + (row.isSecret ? '***' : row.value);
+        list.appendChild(item);
+      });
+      renderPanel('Konfigurasi', [heading, list]);
+    }
+
+    async function showAudit() {
+      const json = await api('audit.list');
+      if (!json.ok) { renderPanel('Audit Log', [document.createTextNode(json.error.message)]); return; }
+      const heading = document.createElement('h3');
+      heading.textContent = '100 log terbaru';
+      const list = document.createElement('ul');
+      (json.data || []).slice(0, 20).forEach(row => {
+        const item = document.createElement('li');
+        item.textContent = (row.timestamp || '') + ' ' + (row.action || '') + ' ' + (row.username || '');
+        list.appendChild(item);
+      });
+      renderPanel('Audit Log', [heading, list]);
+    }
 
     document.getElementById('login-form').onsubmit = async (e) => {
       e.preventDefault();
@@ -112,27 +243,17 @@
       errDiv.textContent = '';
       const btn = document.getElementById('btn-login');
       btn.disabled = true;
-
       try {
-        const res = await fetch(`${API_BASE}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'auth.login',
-            payload: {
-              username: document.getElementById('username').value,
-              password: document.getElementById('password').value
-            }
-          })
+        const json = await api('auth.login', {
+          username: document.getElementById('username').value,
+          password: document.getElementById('password').value
         });
-        const json = await res.json();
         if (!json.ok) {
           errDiv.textContent = json.error ? json.error.message : 'Gagal login';
           return;
         }
-
         token = json.data.token;
-        localStorage.setItem('ccms_token', token);
+        sessionStorage.setItem('ccms_token', token);
         showDashboard(json.data.user);
       } catch (err) {
         errDiv.textContent = 'Terjadi kesalahan jaringan.';
@@ -143,57 +264,17 @@
 
     document.getElementById('btn-logout').onclick = async (e) => {
       e.preventDefault();
-      try {
-        await fetch(`${API_BASE}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'auth.logout', token })
-        });
-      } catch(e){}
-      token = '';
-      localStorage.removeItem('ccms_token');
-      dashboardScreen.style.display = 'none';
-      loginScreen.style.display = 'block';
+      try { await api('auth.logout'); } catch (ignored) {}
+      clearSession();
     };
 
     async function checkSession() {
       if (!token) return;
       try {
-        const res = await fetch(`${API_BASE}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'auth.me', token })
-        });
-        const json = await res.json();
-        if (json.ok) {
-          showDashboard(json.data);
-        } else {
-          token = '';
-          localStorage.removeItem('ccms_token');
-        }
-      } catch(e){}
-    }
-
-    function showDashboard(user) {
-      loginScreen.style.display = 'none';
-      dashboardScreen.style.display = 'block';
-
-      document.getElementById('user-display').textContent = `${user.full_name} (@${user.username})`;
-      document.getElementById('user-role-badge').textContent = user.roles.join(', ');
-      document.getElementById('perm-list').textContent = 'Permissions: ' + user.permissions.join(', ');
-
-      const nav = document.getElementById('nav-items');
-      nav.innerHTML = '<a href="#">Dashboard</a>';
-
-      if (user.permissions.includes('USER_MANAGE')) {
-        nav.innerHTML += '<a href="#">Pengguna & Role</a>';
-      }
-      if (user.permissions.includes('MENU_CONFIG') || user.permissions.includes('SYSTEM_CONFIG')) {
-        nav.innerHTML += '<a href="#">Pengaturan Sistem</a>';
-      }
-      if (user.permissions.includes('AUDIT_VIEW')) {
-        nav.innerHTML += '<a href="#">Audit Log</a>';
-      }
+        const json = await api('auth.me');
+        if (json.ok) showDashboard(json.data);
+        else clearSession();
+      } catch (ignored) {}
     }
 
     checkSession();

@@ -13,7 +13,9 @@ var Users = (function () {
     roles.forEach(function (r) { roleMap[r.role_id] = r.role_code; });
 
     return users.map(function (u) {
-      var myRoleIds = userRoles.filter(function (ur) { return ur.user_id === u.user_id; }).map(function (ur) { return ur.role_id; });
+      var myRoleIds = userRoles.filter(function (ur) {
+        return ur.user_id === u.user_id && ur.deleted !== true && String(ur.deleted).toUpperCase() !== 'TRUE';
+      }).map(function (ur) { return ur.role_id; });
       var myRoleCodes = myRoleIds.map(function (rid) { return roleMap[rid]; }).filter(Boolean);
 
       return {
@@ -112,7 +114,7 @@ var Users = (function () {
     Db.write('USERS', function () { return { update: [updateObj] }; });
 
     if (Array.isArray(ctx.payload.role_codes)) {
-      assignRolesByCode(userId, ctx.payload.role_codes, ctx.user.user_id);
+      replaceRolesByCode(userId, ctx.payload.role_codes, ctx.user.user_id);
     }
 
     Audit.log(ctx, 'UPDATE', 'USER', 'USERS', userId, { update: ctx.payload });
@@ -178,7 +180,11 @@ var Users = (function () {
 
     var userRoles = Db.readAll('USER_ROLES');
     var targetUr = null;
-    userRoles.forEach(function (ur) { if (ur.user_id === userId && ur.role_id === roleId) targetUr = ur; });
+    userRoles.forEach(function (ur) {
+      if (ur.user_id === userId && ur.role_id === roleId && ur.deleted !== true && String(ur.deleted).toUpperCase() !== 'TRUE') {
+        targetUr = ur;
+      }
+    });
 
     if (targetUr) {
       // Hapus baris dengan mengosongkan semua field (soft delete)
@@ -240,7 +246,9 @@ var Users = (function () {
     if (!superRole) throw new AppError('INTERNAL_ERROR', 'Role SUPER_ADMIN tidak ditemukan', 500);
 
     var users = Db.readAll('USERS');
-    var userRoles = Db.readAll('USER_ROLES');
+    var userRoles = Db.readAll('USER_ROLES').filter(function (ur) {
+      return ur.deleted !== true && String(ur.deleted).toUpperCase() !== 'TRUE';
+    });
     var activeAdmins = users.filter(function (u) {
       var active = u.is_active === true || String(u.is_active).toUpperCase() === 'TRUE';
       if (!active) return false;
@@ -254,11 +262,69 @@ var Users = (function () {
     }
   }
 
+  function activeUserRoles(userId) {
+    return Db.readAll('USER_ROLES').filter(function (ur) {
+      return ur.user_id === userId && ur.deleted !== true && String(ur.deleted).toUpperCase() !== 'TRUE';
+    });
+  }
+
+  function replaceRolesByCode(userId, roleCodes, assignedBy) {
+    if (!userId) throw new AppError('VALIDATION', 'user_id wajib diisi', 400);
+    var roleMap = validateRoleCodes(roleCodes);
+    var desiredIds = [];
+    roleCodes.forEach(function (code) {
+      desiredIds.push(roleMap[String(code).trim().toUpperCase()]);
+    });
+
+    var roles = Db.readAll('ROLES');
+    var superRole = null;
+    roles.forEach(function (r) { if (r.role_code === 'SUPER_ADMIN') superRole = r; });
+    if (superRole && desiredIds.indexOf(superRole.role_id) === -1) {
+      ensureNotLastSuperAdmin(userId);
+    }
+
+    var existingUr = activeUserRoles(userId);
+    var existingRoleIds = existingUr.map(function (ur) { return ur.role_id; });
+    var updates = [];
+    existingUr.forEach(function (ur) {
+      if (desiredIds.indexOf(ur.role_id) === -1) {
+        updates.push({
+          _row: ur._row,
+          user_role_id: '',
+          user_id: '',
+          role_id: '',
+          assigned_at: '',
+          assigned_by: '',
+          deleted: true,
+          deleted_at: Db.now(),
+          deleted_by: assignedBy,
+        });
+      }
+    });
+
+    var newAppends = [];
+    desiredIds.forEach(function (rid) {
+      if (existingRoleIds.indexOf(rid) === -1) {
+        newAppends.push({
+          user_role_id: Db.newId('UR'),
+          user_id: userId,
+          role_id: rid,
+          assigned_at: Db.now(),
+          assigned_by: assignedBy,
+        });
+      }
+    });
+
+    if (updates.length || newAppends.length) {
+      Db.write('USER_ROLES', function () { return { update: updates, append: newAppends }; });
+    }
+  }
+
   function assignRolesByCode(userId, roleCodes, assignedBy) {
     if (!userId) throw new AppError('VALIDATION', 'user_id wajib diisi', 400);
     var roleMap = validateRoleCodes(roleCodes);
 
-    var existingUr = Db.readAll('USER_ROLES').filter(function (ur) { return ur.user_id === userId; });
+    var existingUr = activeUserRoles(userId);
     var existingRoleIds = existingUr.map(function (ur) { return ur.role_id; });
 
     var newAppends = [];

@@ -11,7 +11,7 @@ var Audit = (function () {
           append: [{
             audit_id: Db.newId('AUD'),
             timestamp: Db.now(),
-            session_id: '',
+            session_id: ctx && ctx.user && ctx.user.session_id ? ctx.user.session_id : '',
             user_id: ctx && ctx.user ? ctx.user.user_id : '',
             username: ctx && ctx.user ? ctx.user.username : '',
             action: action,

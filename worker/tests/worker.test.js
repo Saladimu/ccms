@@ -39,6 +39,31 @@ test('Worker rejects malformed JSON and unsupported methods', async () => {
   assert.equal(methodResponse.status, 405);
 });
 
+test('Worker treats meta.token as authenticated and bypasses public cache', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('upstream must not be called'); };
+  try {
+    const request = new Request('https://api.example.test/api', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'https://dev.example.test' },
+      body: JSON.stringify({
+        action: 'public.info',
+        meta: { token: 'sit-session' }
+      })
+    });
+    const response = await worker.fetch(request, {
+      GAS_URL: 'CONFIGURE_DEV_GAS_URL',
+      ALLOWED_ORIGINS: '["https://dev.example.test"]'
+    });
+    const body = await response.json();
+    assert.equal(response.status, 500);
+    assert.equal(body.error.code, 'CONFIG_ERROR');
+    assert.equal(response.headers.get('X-CCMS-Cache'), 'BYPASS');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('Worker CORS denies origins not present in environment allowlist', async () => {
   const request = new Request('https://api.example.test/api', {
     method: 'POST',

@@ -141,3 +141,18 @@ Pemeriksaan ulang `Auth.gs`, `Router.gs`, `Code.gs`, Data Dictionary §10, dan `
 | Apps Script STAGING | Belum dilakukan pengujian endpoint privat lintas-role di runtime STAGING | Pending — Runtime Verification |
 
 **Keputusan tindak lanjut:** tidak perlu mengubah matriks atau kode RBAC hanya berdasarkan audit ini. Lanjutkan dengan penambahan tes direct API dan status nonaktif/multi-role, lalu lakukan verifikasi runtime STAGING setelah akun UAT disetujui. Tidak ada perubahan database, akun, deployment, atau PROD dalam pembaruan dokumentasi ini.
+
+## Progress update — 11 November 2026 (quick review repairs)
+
+Perbaikan source/test yang dapat dikerjakan tanpa akses runtime STAGING/PROD:
+
+| Area | Perbaikan | Status |
+|---|---|---|
+| C-01 direct API | SIT `doPost` sekarang menolak SECRETARY/TREASURER/COMMITTEE_HEAD/STAFF pada `users.list`, mengizinkan SUPER_ADMIN, dan menolak permission/role nonaktif | Automated Test Present |
+| C-01 multi-role | Gabungan PASTOR+SECRETARY hanya mendapat union grant Tahap 1 | Automated Test Present |
+| H-02 role replace | `users.update` dengan `role_codes` mengganti role lama (soft-delete) alih-alih menumpuk assignment | Implemented — Testing Required |
+| H-08 dashboard | Internal app hanya menampilkan fungsi Tahap 1 yang benar-benar tersedia; token dikirim via `meta.token`; sessionStorage menggantikan localStorage | Implemented — Runtime Verification Required |
+| C-05 public pages | SIT tujuh menu + OFF_HIDDEN 404 + OFF_MAINTENANCE | Automated Test Present |
+| menu.list | Permission diubah ke `MENU_CONFIG` (deny-by-default) | Implemented — Testing Required |
+
+Automated suite lokal: 20 backend tests + 3 worker tests lulus. **Belum menutup C-06 environment proof, C-08 UAT/release, SIT DEV/STAGING, atau benchmark PBKDF2 Apps Script.**
