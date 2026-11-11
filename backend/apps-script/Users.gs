@@ -37,7 +37,7 @@ var Users = (function () {
     var fullName = String(ctx.payload.full_name || '').trim();
 
     if (!username || username.length < 3) throw new AppError('VALIDATION', 'Username minimal 3 karakter', 400);
-    if (!password || password.length < 8) throw new AppError('VALIDATION', 'Password minimal 8 karakter', 400);
+    if (!isPasswordStrong(password)) throw new AppError('VALIDATION', 'Password minimal 8 karakter dan wajib mengandung huruf serta angka', 400);
     if (!fullName) throw new AppError('VALIDATION', 'Nama lengkap wajib diisi', 400);
 
     var existing = Db.readAll('USERS');
@@ -122,8 +122,8 @@ var Users = (function () {
   function resetPassword(ctx) {
     var userId = String(ctx.payload.user_id || '');
     var newPassword = String(ctx.payload.new_password || '');
-    if (!userId || !newPassword || newPassword.length < 8) {
-      throw new AppError('VALIDATION', 'user_id dan new_password (min 8 char) wajib diisi', 400);
+    if (!userId || !isPasswordStrong(newPassword)) {
+      throw new AppError('VALIDATION', 'user_id dan password minimal 8 karakter yang mengandung huruf serta angka wajib diisi', 400);
     }
 
     var users = Db.readAll('USERS');
@@ -199,6 +199,13 @@ var Users = (function () {
 
     Audit.log(ctx, 'ROLE_REVOKE', 'USER', 'USER_ROLES', userId, { role_code: roleCode });
     return { revoked: true };
+  }
+
+  function isPasswordStrong(password) {
+    return typeof password === 'string' &&
+      password.length >= 8 &&
+      /[A-Za-z]/.test(password) &&
+      /[0-9]/.test(password);
   }
 
   function validateRoleCodes(roleCodes) {
