@@ -47,6 +47,11 @@ var Users = (function () {
       }
     });
 
+    // Validasi seluruh role sebelum membuat user agar tidak ada akun yatim
+    // akibat assignment role yang gagal/parsial.
+    var roleCodes = ctx.payload.role_codes || ['STAFF'];
+    validateRoleCodes(roleCodes);
+
     var userId = Db.newId('USR');
     var hash = Auth.hashPassword(password);
     var nowIso = Db.now();
@@ -71,8 +76,7 @@ var Users = (function () {
       };
     });
 
-    // Assign default role STAFF bila role_codes dikirim
-    var roleCodes = ctx.payload.role_codes || ['STAFF'];
+    // Assign role setelah seluruh kode role tervalidasi sebelum insert user.
     assignRolesByCode(userId, roleCodes, ctx.user.user_id);
 
     Audit.log(ctx, 'CREATE', 'USER', 'USERS', userId, { username: username, roles: roleCodes });
@@ -87,6 +91,15 @@ var Users = (function () {
     var target = null;
     users.forEach(function (u) { if (u.user_id === userId) target = u; });
     if (!target) throw new AppError('NOT_FOUND', 'User tidak ditemukan', 404);
+
+    if (ctx.payload.is_active !== undefined) {
+      var requestedActive = ctx.payload.is_active === true || String(ctx.payload.is_active).toUpperCase() === 'TRUE';
+      if (!requestedActive && (target.is_active === true || String(target.is_active).toUpperCase() === 'TRUE')) {
+        ensureNotLastSuperAdmin(userId);
+      }
+    }
+
+    if (Array.isArray(ctx.payload.role_codes)) validateRoleCodes(ctx.payload.role_codes);
 
     var nowIso = Db.now();
     var updateObj = { _row: target._row, updated_at: nowIso, updated_by: ctx.user.user_id };
@@ -158,6 +171,8 @@ var Users = (function () {
     var roleId = null;
     roles.forEach(function (r) { if (r.role_code === roleCode) roleId = r.role_id; });
     if (!roleId) throw new AppError('NOT_FOUND', 'Role tidak ditemukan: ' + roleCode, 404);
+    if (!userId) throw new AppError('VALIDATION', 'user_id wajib diisi', 400);
+    if (roleCode === 'SUPER_ADMIN') ensureNotLastSuperAdmin(userId);
 
     var userRoles = Db.readAll('USER_ROLES');
     var targetUr = null;
@@ -186,18 +201,62 @@ var Users = (function () {
     return { revoked: true };
   }
 
-  function assignRolesByCode(userId, roleCodes, assignedBy) {
+  function validateRoleCodes(roleCodes) {
+    if (!Array.isArray(roleCodes) || roleCodes.length === 0) {
+      throw new AppError('VALIDATION', 'Minimal satu role aktif harus ditetapkan', 400);
+    }
+
     var roles = Db.readAll('ROLES');
-    var roleMap = {};
-    roles.forEach(function (r) { roleMap[r.role_code] = r.role_id; });
+    var valid = {};
+    roles.forEach(function (r) {
+      if (r.is_active === true || String(r.is_active).toUpperCase() === 'TRUE') valid[r.role_code] = r.role_id;
+    });
+
+    var seen = {};
+    roleCodes.forEach(function (code) {
+      var normalized = String(code || '').trim().toUpperCase();
+      if (!normalized || !valid[normalized]) {
+        throw new AppError('VALIDATION', 'Role tidak dikenal atau tidak aktif: ' + code, 400);
+      }
+      if (seen[normalized]) throw new AppError('VALIDATION', 'Role duplikat: ' + normalized, 400);
+      seen[normalized] = true;
+    });
+    return valid;
+  }
+
+  function ensureNotLastSuperAdmin(targetUserId) {
+    var roles = Db.readAll('ROLES');
+    var superRole = null;
+    roles.forEach(function (r) { if (r.role_code === 'SUPER_ADMIN') superRole = r; });
+    if (!superRole) throw new AppError('INTERNAL_ERROR', 'Role SUPER_ADMIN tidak ditemukan', 500);
+
+    var users = Db.readAll('USERS');
+    var userRoles = Db.readAll('USER_ROLES');
+    var activeAdmins = users.filter(function (u) {
+      var active = u.is_active === true || String(u.is_active).toUpperCase() === 'TRUE';
+      if (!active) return false;
+      return userRoles.some(function (ur) {
+        return ur.user_id === u.user_id && ur.role_id === superRole.role_id;
+      });
+    });
+    var targetIsAdmin = activeAdmins.some(function (u) { return u.user_id === targetUserId; });
+    if (targetIsAdmin && activeAdmins.length <= 1) {
+      throw new AppError('CONFLICT', 'Super Admin aktif terakhir tidak dapat dinonaktifkan atau dicabut role-nya.', 409);
+    }
+  }
+
+  function assignRolesByCode(userId, roleCodes, assignedBy) {
+    if (!userId) throw new AppError('VALIDATION', 'user_id wajib diisi', 400);
+    var roleMap = validateRoleCodes(roleCodes);
 
     var existingUr = Db.readAll('USER_ROLES').filter(function (ur) { return ur.user_id === userId; });
     var existingRoleIds = existingUr.map(function (ur) { return ur.role_id; });
 
     var newAppends = [];
     roleCodes.forEach(function (code) {
-      var rid = roleMap[code];
-      if (rid && existingRoleIds.indexOf(rid) === -1) {
+      var normalized = String(code).trim().toUpperCase();
+      var rid = roleMap[normalized];
+      if (existingRoleIds.indexOf(rid) === -1) {
         newAppends.push({
           user_role_id: Db.newId('UR'),
           user_id: userId,
