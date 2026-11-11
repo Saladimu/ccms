@@ -16,6 +16,10 @@ function migrateSessionRevocationSheet() {
   }
 
   var ss = SpreadsheetApp.openById(spreadsheetId);
+  var expectedName = 'CCMS-' + env + '-DB';
+  if (ss.getName() !== expectedName) {
+    throw new Error('Migrasi dihentikan: nama database aktual tidak cocok dengan CCMS_ENV. Expected ' + expectedName + ', found ' + ss.getName() + '. Periksa pointer database sebelum melanjutkan.');
+  }
   if (ss.getSheetByName('REVOKED_SESSIONS')) {
     Logger.log('REVOKED_SESSIONS sudah tersedia; tidak ada perubahan.');
     return;
