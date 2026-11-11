@@ -128,7 +128,7 @@ function setupDatabase() {
   DriveApp.getFileById(ss.getId()).moveTo(envFolder);
 
   // Super Admin awal - pakai Db.write untuk konsistensi
-  var adminPassword = 'CCMS-' + Utilities.getUuid().replace(/-/g, '').slice(0, 12);
+  var adminPassword = 'CCMS-1' + Utilities.getUuid().replace(/-/g, '').slice(0, 12);
   var adminUserId = Db.newId('USR');
   var roles = ss.getSheetByName('ROLES').getDataRange().getValues();
   var superRoleId = '';
