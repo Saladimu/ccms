@@ -30,11 +30,9 @@ var Auth = (function () {
   }
 
   function generateSalt() {
-    var bytes = [];
-    for (var i = 0; i < 16; i++) {
-      bytes.push(Math.floor(Math.random() * 256) - 128);
-    }
-    return bytesToHex(bytes);
+    // UUID menghasilkan 32 digit hex setelah tanda hubung dihapus (16 byte).
+    // Jangan gunakan Math.random() untuk salt password.
+    return Utilities.getUuid().replace(/-/g, '').toLowerCase();
   }
 
   function bytesToHex(bytes) {
