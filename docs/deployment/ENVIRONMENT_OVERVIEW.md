@@ -1,6 +1,6 @@
 # CCMS — Environment Overview
 
-Dokumen ini adalah pintu masuk untuk memahami pemisahan environment CCMS. Detail teknis dan checklist berada di [ENVIRONMENT_ISOLATION.md](ENVIRONMENT_ISOLATION.md).
+Dokumen ini adalah pintu masuk untuk memahami pemisahan environment CCMS. Detail teknis dan checklist berada di [ENVIRONMENT_ISOLATION.md](ENVIRONMENT_ISOLATION.md). Prosedur pembuatan STAGING ada di [STAGING_SETUP_RUNBOOK.md](STAGING_SETUP_RUNBOOK.md).
 
 ## Tujuan setiap environment
 
@@ -54,11 +54,11 @@ STAGING -- SIT + UAT + persetujuan rilis
 |---|---|
 | Definisi tiga environment di dokumentasi | Tersedia |
 | Blok konfigurasi Worker DEV/STAGING/PROD di repository | Tersedia, URL/origin masih perlu diisi |
-| Project Apps Script DEV | Belum diverifikasi dari repository |
-| Project Apps Script STAGING | **Belum dibuat** |
+| Project Apps Script DEV | Belum diverifikasi; perlu inventarisasi akun Google |
+| Project Apps Script STAGING | **Belum dibuat / belum diverifikasi** |
 | Project Apps Script PROD | Belum diverifikasi dari repository |
-| Spreadsheet terpisah dan aktual | Belum diverifikasi |
-| Secret unik per environment | Belum diverifikasi |
+| Spreadsheet terpisah dan aktual | DEV/PROD belum diverifikasi; STAGING belum dibuat |
+| Secret unik per environment | Belum diverifikasi; STAGING belum dibuat |
 | Uji isolasi runtime silang | Belum dilakukan |
 | Deployment STAGING | Belum dilakukan |
 
@@ -66,10 +66,10 @@ Status di atas membedakan kesiapan konfigurasi repository dari keberadaan resour
 
 ## Langkah berikutnya
 
-1. Inventarisasi project Apps Script, Worker, Pages, spreadsheet, folder Drive, dan deployment yang benar-benar ada.
-2. Catat ID/URL setiap environment di tempat aman; jangan commit secret atau token ke Git.
-3. Buat project Apps Script STAGING terpisah dan database STAGING kosong.
-4. Isi konfigurasi Worker STAGING dan deploy setelah pemeriksaan dua pihak.
+1. Inventarisasi resource DEV dan PROD yang benar-benar ada pada akun Google dan Cloudflare.
+2. Catat ID/URL aktual di password manager atau catatan operasional terbatas; jangan commit secret atau token ke Git.
+3. Buat project Apps Script STAGING terpisah dan database STAGING kosong mengikuti [STAGING_SETUP_RUNBOOK.md](STAGING_SETUP_RUNBOOK.md).
+4. Buat Pages STAGING dan isi konfigurasi Worker STAGING berdasarkan URL/origin aktual.
 5. Jalankan checklist isolasi silang sebelum membuat akun UAT.
 6. Setelah SIT/UAT lulus, ajukan promosi rilis ke PROD secara terpisah.
 
