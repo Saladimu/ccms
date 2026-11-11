@@ -19,6 +19,7 @@ var Router = (function () {
     // Private (butuh session + permission)
     'auth.logout':        { module: 'Auth',     handler: 'logout',        permission: null, needsSession: true },
     'auth.me':            { module: 'Auth',     handler: 'me',            permission: null, needsSession: true },
+    'auth.changePassword': { module: 'Auth',     handler: 'changePassword', permission: null, needsSession: true },
 
     'users.list':         { module: 'Users',    handler: 'list',          permission: 'USER_MANAGE', needsSession: true },
     'users.create':       { module: 'Users',    handler: 'create',        permission: 'USER_MANAGE', needsSession: true },
