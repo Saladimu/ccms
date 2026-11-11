@@ -1,0 +1,28 @@
+name: CCMS Phase 1 SIT
+
+on:
+  push:
+    branches:
+      - "remediation/**"
+    paths:
+      - "backend/apps-script/**"
+      - "backend/tests/sit/**"
+      - ".github/workflows/sit.yml"
+  pull_request:
+    paths:
+      - "backend/apps-script/**"
+      - "backend/tests/sit/**"
+      - ".github/workflows/sit.yml"
+
+jobs:
+  auth-security-sit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run auth, RBAC, session and KDF tests
+        run: node --test backend/tests/sit/*.test.cjs
