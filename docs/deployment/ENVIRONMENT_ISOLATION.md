@@ -2,6 +2,12 @@
 
 ## Prinsip wajib
 
+**DEV dan STAGING wajib memakai project Google Apps Script yang berbeda.** Jangan mencoba menjadikan satu project Apps Script sebagai DEV sekaligus STAGING dengan mengganti Script Properties. Properti tersebut berlaku pada level project, sehingga pergantian environment dapat mengarahkan deployment ke spreadsheet atau secret yang keliru. Satu akun Google boleh memiliki beberapa project, spreadsheet, dan folder Drive terpisah.
+
+Gunakan [ENVIRONMENT_OVERVIEW.md](ENVIRONMENT_OVERVIEW.md) sebagai ringkasan arsitektur, tujuan, status, dan alur promosi rilis.
+
+
+
 Setiap environment memiliki Cloudflare Worker, Apps Script deployment, Script Properties, Spreadsheet, dan folder Drive yang terpisah. DEV dan STAGING tidak boleh memakai URL deployment, ID spreadsheet, atau secret PROD.
 
 | Komponen | DEV | STAGING/UAT | PROD |
@@ -51,4 +57,6 @@ Setup database baru dilakukan hanya pada DEV/STAGING yang belum memiliki pointer
 
 ## Status saat ini
 
-Konfigurasi repository telah diubah menjadi tiga blok environment dan placeholder fail-closed. **Isolasi runtime belum terbukti** sampai pemilik sistem mengisi URL/ID/secret aktual per environment dan menjalankan checklist silang di DEV/STAGING. Tidak ada deployment yang dilakukan sebagai bagian dari perubahan ini.
+Repository mendefinisikan tiga blok environment Worker dan aturan isolasi. Nilai URL/origin yang masih berupa placeholder harus diisi sesuai resource aktual. **Project Apps Script STAGING belum dibuat dan isolasi runtime belum terbukti.** Spreadsheet, folder Drive, Script Properties, secret, dan deployment aktual tiap environment harus diinventarisasi dan diverifikasi sebelum UAT.
+
+Tidak ada resource cloud yang dibuat atau diubah dan tidak ada deployment yang dilakukan sebagai bagian dari perubahan dokumentasi ini.
