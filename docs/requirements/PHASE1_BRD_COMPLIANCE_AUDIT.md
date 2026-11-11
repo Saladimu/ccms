@@ -58,8 +58,8 @@ Tidak ada pengujian terhadap akun, database, atau deployment produksi yang dilak
 | A1-11 | Sesi berjangka dan logout mengakhiri sesi | JWT memiliki `exp`; `Auth.logout` hanya menulis audit log dan mengembalikan `loggedOut: true` | Partial / Gap — High | Tambahkan revocation/session registry atau desain logout yang benar-benar membatalkan sesi; uji replay token |
 | A1-12 | Konfigurasi sistem dan feature flags | `Config.gs` membaca CONFIG, menyamarkan nilai secret pada apiGet, dan menyediakan apiSet; data dictionary mendefinisikan `AI_ASSISTANT_ENABLED` | Implemented — Verification Required | Uji pembatasan SYSTEM_CONFIG, secret non-disclosure, perubahan config, dan backend enforcement. Fitur AI sendiri Deferred ke Tahap 3 |
 | A1-13 | Menu publik ON / OFF_HIDDEN / OFF_MAINTENANCE tanpa redeploy | `PublicMenu.gs` mengubah status; `Public.gs` menolak menu OFF dan menampilkan maintenance message | Implemented — Verification Required | Uji ketiga status, cache invalidation/TTL, dan akses langsung ke endpoint menu OFF |
-| A1-14 | Portal publik: identitas gereja, profil, kontak | `Public.info` mengembalikan data konfigurasi gereja; frontend menampilkan nama/tagline dan navigasi. Konten halaman generik/placeholder | Partial / Gap | Lengkapi halaman beranda/profil/kontak sesuai scope yang diputuskan; uji tampilan mobile |
-| A1-15 | Jadwal ibadah, pengumuman, kegiatan di portal publik | `Public.page` mengembalikan placeholder untuk schedule, announcements, events; catatan kode menyebut modul terkait Tahap 2 | Deferred / Partial | Konfirmasi scope: bila memang Tahap 2, dokumentasikan sebagai deferred dan jangan klaim portal publik lengkap; bila wajib Tahap 1, implementasikan sebelum exit |
+| A1-14 | Portal publik sesuai BRD: Beranda, Profil Gereja, Jadwal Ibadah, Pengumuman Publik, Kegiatan & Kalender, Informasi Komisi/Pelayanan, Kontak Gereja | BRD §1.4 menyebut tujuh kelompok informasi. `SetupDatabase.gs` hanya men-seed enam menu (home, schedule, announcements, events, profile, contact), tanpa menu komisi/pelayanan. `Public.gs` memberi placeholder untuk schedule/announcements/events dan tidak mengimplementasikan konten komisi/pelayanan. `frontend/public/index.html` merender semua halaman sebagai judul menu + satu pesan generik, termasuk home/profile/contact | Partial / Gap — High | Petakan seluruh tujuh kelompok menu ke konten yang sesuai BRD; implementasikan data dan rendering, termasuk kalender serta informasi komisi/pelayanan; uji seluruh halaman dan menu dinamis |
+| A1-15 | Konsistensi antara Public Portal Tahap 1 dan modul operasional Tahap 2 | BRD §1.4 secara eksplisit memasukkan jadwal, pengumuman, kegiatan/kalender dan informasi komisi/pelayanan ke Public Portal. Roadmap Tahap 1 WP-05 secara eksplisit mencakup Beranda, Profil, Kontak; Tahap 2 membangun data operasional yang dapat menjadi sumber konten dinamis. Ini berarti menu/halaman portal tetap harus mengikuti BRD; sumber konten dapat dipenuhi bertahap (konten awal/statis atau integrasi modul Tahap 2) sesuai keputusan produk | Partial / Gap — High | Jangan menganggap menu placeholder sebagai pemenuhan BRD. Tentukan sumber konten awal untuk Tahap 1 dan integrasi data dinamis saat Tahap 2; semua tujuh kelompok informasi harus memiliki perilaku/isi yang jelas |
 | A1-16 | Internal login dan dashboard skeleton | `frontend/internal/index.html` memiliki login, penyimpanan token localStorage, tampilan dashboard awal dan logout UI | Partial / Gap | UAT skeleton minimal dua role; evaluasi penyimpanan token dan implementasi dashboard sesuai permission |
 | A1-17 | Semua penulisan sheet melewati LockService | `Db.write` menggunakan ScriptLock untuk operasi append/update | Implemented — Verification Required | Audit seluruh jalur mutasi; uji concurrency, kegagalan parsial, dan validasi data sebelum write |
 | A1-18 | Audit log aktivitas penting | `Audit.gs` append log dan menyediakan list; beberapa operasi memanggil Audit.log | Implemented — Verification Required | Pastikan cakupan aksi, integritas log, akses baca, dan kegagalan audit tidak menyembunyikan error penting |
@@ -220,3 +220,45 @@ Catatan: jadwal ibadah dan informasi publik muncul dalam BRD Public Portal, seda
 - `worker/wrangler.toml`
 - `deployment/cloudflare/README.md`
 - `deployment/google/README.md`
+
+
+## 9. Hasil pencocokan khusus Public Portal terhadap BRD
+
+Pemilik proyek telah menegaskan bahwa Public Portal harus mengikuti BRD awal. Dengan demikian, acuan kebutuhan portal adalah **BRD §1.4**, bukan hanya daftar pekerjaan minimum WP-05 pada roadmap.
+
+| Kelompok informasi BRD §1.4 | Temuan source saat ini | Hasil |
+|---|---|---|
+| Beranda | Menu `home` tersedia, tetapi `Public.page` tidak menyediakan konten khusus; frontend menampilkan pesan generik | Gap |
+| Profil gereja | Menu `profile` tersedia; tidak ada konten profil khusus yang dirender | Gap |
+| Jadwal ibadah | Menu tersedia; backend mengembalikan placeholder | Gap |
+| Pengumuman publik | Menu tersedia; backend mengembalikan array kosong dan pesan placeholder | Gap |
+| Kegiatan dan kalender | Menu `events` tersedia; backend mengembalikan array kosong dan pesan placeholder; tidak ada tampilan kalender | Gap |
+| Informasi komisi/pelayanan | Tidak ditemukan menu seed atau handler konten publik khusus | Gap |
+| Kontak gereja | Konfigurasi alamat/telepon/email tersedia di `Public.info`, tetapi frontend tidak merender halaman kontak khusus | Partial / Gap |
+
+**Kesimpulan portal:** enam menu seed bukan bukti pemenuhan tujuh kelompok informasi BRD. Data identitas gereja yang dikirim backend juga belum cukup jika tidak ditampilkan pada halaman yang relevan. Setiap kelompok informasi perlu memiliki definisi konten, sumber data, tampilan, kondisi kosong, dan perilaku ketika OFF/HIDDEN/MAINTENANCE.
+
+Roadmap Tahap 1 WP-05 menuliskan Beranda, Profil, dan Kontak sebagai pekerjaan portal awal, sedangkan jadwal/pengumuman/kegiatan memiliki ketergantungan pada modul operasional Tahap 2. Interpretasi yang konsisten adalah: **kerangka portal dan seluruh navigasi/halaman harus disiapkan sesuai BRD; konten yang memerlukan data operasional dapat dimulai dengan konten awal yang disetujui, lalu dihubungkan ke modul Tahap 2.** Placeholder teknis tidak boleh dianggap sebagai hasil akhir yang memenuhi BRD.
+
+## 10. Smoke test production — status percobaan
+
+Pemilik proyek menyetujui smoke test read-only. Pada sesi audit ini, percobaan akses ke URL yang tercantum dalam README dilakukan untuk:
+
+- `https://ccms-public.pages.dev`
+- `https://ccms-internal.pages.dev`
+- `https://ccms-api.ccms-gereja.workers.dev/api`
+
+**Hasil: belum dapat dieksekusi dari lingkungan audit ini.** Pembukaan URL melalui browser riset mengembalikan status tidak dapat diakses; percobaan koneksi langsung juga gagal pada resolusi DNS (`Temporary failure in name resolution`). Ini adalah keterbatasan konektivitas alat audit, bukan bukti bahwa layanan production down.
+
+Karena itu:
+- Status production runtime tetap **Not Verified**.
+- Belum ada klaim HTTP status, response API, waktu respons, cache HIT/MISS, ataupun keberhasilan render browser.
+- Tidak ada request mutasi atau perubahan data yang dilakukan.
+- Smoke test perlu diulang dari browser/jaringan yang dapat mengakses domain tersebut atau melalui runner yang memiliki akses jaringan. Pengujian API publik sebaiknya hanya memanggil `public.info` dan `public.page` untuk menu yang ON; jangan mengirim action privat atau melakukan operasi tulis.
+
+## 11. Keputusan dan tindak lanjut yang telah dikonfirmasi
+
+- Public Portal harus memenuhi kelompok informasi pada BRD §1.4.
+- Smoke test production read-only disetujui, tetapi hasil percobaan saat ini terhalang keterbatasan DNS/konektivitas alat.
+- UAT belum dijadwalkan. Saat disusun nanti, UAT dashboard minimal melibatkan dua role berbeda; pemilihan role dan perwakilan gereja dibahas terpisah.
+- Belum ada perubahan source aplikasi, konfigurasi production, atau data produksi.
