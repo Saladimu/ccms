@@ -82,12 +82,12 @@ Jika proyek belum memiliki Node test runtime di mesin penguji, jalankan pada Nod
 ## 6. Hasil automated CI — 11 November 2026
 
 **PASS** **GitHub Actions — CCMS Phase 1 SIT**  
-Run: 8  
-Commit diuji: `d668b9818a8a3b7897eec48ef5d21347c8eaa5c8`  
-Hasil: **11/11 automated tests passed, 0 failed**.
+Run: 14  
+Commit diuji: `fb95deff59a3d63b172c4225510a9b934e8d7a48`  
+Hasil: **12/12 automated tests passed, 0 failed**.
 
 Rincian:
-- Backend/Auth: 8 test lulus — PBKDF2 test oracle, verifikasi hash legacy, matriks role/stage gate, JWT malformed/expired/alg/signature, inactive user, secret kosong, logout revocation, direct API allow/deny dan no-token.
+- Backend/Auth: 9 test lulus — PBKDF2 test oracle, verifikasi hash legacy, matriks role/stage gate, JWT malformed/expired/alg/signature, inactive user, secret kosong, logout revocation, direct API allow/deny dan no-token.
 - Worker: 3 test lulus — placeholder environment ditolak tanpa upstream call, malformed JSON/method ditolak, CORS menolak origin yang tidak di-allowlist.
 
 Batas cakupan:
