@@ -4,13 +4,17 @@ Sistem Manajemen Komunitas Gereja terpusat berbasis Cloudflare Pages + Worker (A
 
 ---
 
-## 🚀 Status Proyek & URL Live
+## 🚦 Status Proyek & Environment
 
-| Tahap | Nama | Status |
-|-------|------|--------|
-| 1 | Foundations, Security, AuthN/AuthZ, Public Portal & Internal App | ✅ **SELESAI & LIVE** |
-| 2 | Operasional (Jemaat, Komisi, Pengumuman, Kegiatan) | ⏳ Dalam Rencana |
-| 3 | Keuangan, AI & Go-Live | ⏳ Dalam Rencana |
+Status source code, konfigurasi repository, dan deployment cloud adalah tiga hal berbeda. Lulus CI tidak otomatis berarti semua environment sudah tersedia atau siap produksi.
+
+| Environment | Tujuan | Status berdasarkan verifikasi terakhir |
+|---|---|---|
+| DEV | Pengembangan dan pengujian teknis | Konfigurasi repository tersedia; resource cloud aktual perlu inventarisasi |
+| STAGING / UAT | SIT, UAT, dan validasi kandidat rilis | **Belum siap** — project Apps Script dan resource STAGING belum dibuat/diverifikasi |
+| PROD | Operasional resmi | URL production tercatat di bawah; perubahan/deployment tetap melalui persetujuan dan release gate |
+
+Lihat [Environment Overview](docs/deployment/ENVIRONMENT_OVERVIEW.md) dan [Environment Isolation](docs/deployment/ENVIRONMENT_ISOLATION.md) sebelum melakukan setup atau deployment.
 
 ### 🌐 URL Resmi Production (Tahap 1)
 
@@ -44,7 +48,7 @@ ccms/
 │   │   ├── ROADMAP_3_TAHAPAN.md                              # Roadmap Implementasi
 │   │   ├── TAHAP1_IMPLEMENTASI_SELESAI.md                     # Ringkasan Teknis Tahap 1
 │   │   └── USER_GUIDE_TAHAP1.md                               # Panduan Langkah demi Langkah
-│   └── database/
+│   ├── deployment/\n│   │   ├── ENVIRONMENT_OVERVIEW.md                           # Ringkasan DEV/STAGING/PROD\n│   │   └── ENVIRONMENT_ISOLATION.md                           # Aturan isolasi & checklist\n│   └── database/
 │       └── DATA_DICTIONARY_TAHAP1.md                         # Data Dictionary Sheet Tahap 1
 ├── frontend/
 │   ├── public/index.html                                     # Static Web Portal Publik (Pages)
@@ -76,15 +80,9 @@ ccms/
 
 ---
 
-## 🔐 Kredensial & Autentikasi (Tahap 1)
+## 🔐 Keamanan Kredensial
 
-| Field | Nilai Default | Catatan |
-|-------|---------------|---------|
-| **Username** | `admin` | Lowercase |
-| **Password** | `Admin123!` | Wajib diubah via `users.resetPassword` setelah first login |
-| **Role** | `SUPER_ADMIN` | Memiliki 23 permissions lengkap |
-| **Hashing** | SHA-256 iterated (50.000x) + salt 16 bytes | Diolah di `Auth.gs` |
-| **Lockout** | 3 kali gagal berturut-turut → blokir 5 menit | Ditegakkan di backend |
+Jangan menyimpan username/password operasional, token, session secret, API key, atau kredensial awal di README maupun repository. Ikuti prosedur bootstrap dan reset password yang aman pada dokumentasi deployment. Nilai konfigurasi rahasia harus disimpan pada Script Properties atau secret manager sesuai environment, bukan di Git.
 
 ---
 
@@ -128,7 +126,7 @@ print(r.read().decode())
 
 ## 📋 Work Packages Tahap 1 Selesai
 
-- [x] **WP-01 Project Foundation** (Repo, environment DEV/STAGING/PROD, Cloudflare, clasp)
+- [x] **WP-01 Project Foundation** (struktur repository dan kerangka konfigurasi environment; resource cloud DEV/STAGING/PROD tetap perlu diverifikasi)
 - [x] **WP-02 Backend Foundation** (API Gateway, standard response, error handling)
 - [x] **WP-03 Authentication & Authorization** (JWT, PBKDF2 hashing, Lockout 3x→5m, RBAC 23 perms)
 - [x] **WP-04 Database & System Configuration** (8 sheet awal, config cache, theme tokens)
