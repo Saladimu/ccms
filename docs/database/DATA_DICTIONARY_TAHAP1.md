@@ -77,6 +77,14 @@ Unik: `config_key`.
 | `AI_PROVIDER` | STRING | `GEMINI` | — |
 | `AI_MODEL` | STRING | *(isi Tahap 3)* | Nama model Gemini |
 | `AI_DAILY_LIMIT` | NUMBER | `50` | Batas pemanggilan AI per hari |
+| `CHURCH_HISTORY` | STRING | *(isi saat setup)* | Ringkasan sejarah gereja untuk portal publik |
+| `CHURCH_VISION` | STRING | *(isi saat setup)* | Visi gereja untuk portal publik |
+| `CHURCH_MISSION` | STRING | *(isi saat setup)* | Misi gereja untuk portal publik |
+| `PUBLIC_WORSHIP_SCHEDULE` | STRING | *(isi saat setup)* | Informasi jadwal ibadah publik |
+| `PUBLIC_ANNOUNCEMENTS_INFO` | STRING | *(isi saat setup)* | Informasi pengumuman publik sementara sebelum modul Tahap 2 |
+| `PUBLIC_EVENTS_INFO` | STRING | *(isi saat setup)* | Informasi kegiatan dan kalender publik sementara sebelum modul Tahap 2 |
+| `PUBLIC_MINISTRY_INFO` | STRING | *(isi saat setup)* | Informasi komisi dan pelayanan publik |
+| `PUBLIC_CONTACT_HOURS` | STRING | *(isi saat setup)* | Jam layanan/kontak gereja |
 
 > Kunci baru hanya boleh ditambahkan lewat perubahan yang dicatat di change log dokumen induk.
 
@@ -89,7 +97,7 @@ Menu navigasi portal publik. Status ditegakkan di backend (endpoint halaman pun 
 | Kolom | Tipe | Wajib | Aturan / Keterangan |
 |---|---|---|---|
 | `menu_id` | STRING | Ya | ID unik, prefix `MENU`. |
-| `menu_key` | STRING | Ya | Kunci unik stabil untuk kode: `home`, `schedule`, `announcements`, `events`, `profile`, `contact`. |
+| `menu_key` | STRING | Ya | Kunci unik stabil untuk kode: `home`, `schedule`, `announcements`, `events`, `profile`, `contact`, `ministries`. |
 | `menu_label` | STRING | Ya | Label tampil di navigasi (Bahasa Indonesia). |
 | `parent_menu_id` | STRING | Tidak | Untuk submenu; `NULL` bila level 1. |
 | `url_path` | STRING | Ya | Path relatif portal, contoh `/jadwal`. |
@@ -110,6 +118,7 @@ Unik: `menu_key`.
 | `events` | Kegiatan | `/kegiatan` | 4 |
 | `profile` | Profil Gereja | `/profil` | 5 |
 | `contact` | Kontak | `/kontak` | 6 |
+| `ministries` | Komisi & Pelayanan | `/komisi-pelayanan` | 7 |
 
 ---
 
