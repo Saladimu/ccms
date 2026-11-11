@@ -411,3 +411,86 @@ Repository memiliki 23 permission di data dictionary dan seed PERMISSIONS. Empat
 - backend/apps-script/tools/SetupDatabase.gs — seed 6 role dan 23 permission.
 
 Audit ini merupakan pemeriksaan source. Belum ada perubahan aplikasi, data, konfigurasi, maupun pengujian mutasi production.
+
+
+## 14. Audit environment, database, dan jalur penulisan — Tahap Implementasi 1
+
+### 14.1 Environment DEV / STAGING / PROD
+
+| Kebutuhan BRD / roadmap | Bukti repository | Penilaian |
+|---|---|---|
+| Tiga environment terpisah | deployment/google/README.md dan deployment/cloudflare/README.md mendokumentasikan DEV, STAGING, PROD | Implemented — dokumentasi |
+| Worker terpisah/terkonfigurasi per environment | worker/wrangler.toml hanya memiliki [vars] default; blok env.staging dan env.production masih berupa komentar | Partial / Gap |
+| GAS deployment terpisah per environment | Panduan deployment meminta Apps Script project per environment, tetapi tidak ada bukti deployment aktual di source repository | Documented — Runtime Verification Required |
+| Spreadsheet terpisah per environment | Panduan menyebut CCMS-DEV-DB, CCMS-STAGING-DB, CCMS-PROD-DB; SetupDatabase.gs membuat CCMS-DEV-DB secara hardcoded | Partial / Gap — High |
+| Folder Drive terpisah | DRIVE_FOLDER_NAME dapat disesuaikan manual dan folder dibuat berdasarkan segmen nama environment | Partial — perlu uji pemetaan aktual |
+| Script Properties per environment | Db.spreadsheet() mengambil CCMS_SPREADSHEET_ID dari Script Properties; SESSION_SECRET juga disimpan di Script Properties | Implemented — perlu bukti tiap project memakai property terpisah |
+| Tidak ada koneksi silang DEV ↔ PROD | Belum ada environment manifest atau hasil tes koneksi silang | Not Verified |
+
+**Temuan ENV-01 — SetupDatabase belum benar-benar environment-aware.** Fungsi setupDatabase() tetap membuat spreadsheet bernama CCMS-DEV-DB, meskipun komentar dan dokumentasi meminta nama disesuaikan untuk STAGING/PROD. DRIVE_FOLDER_NAME saja tidak mengubah nama spreadsheet. Ini membuka risiko ketidaksesuaian folder dan database jika setup dilakukan untuk environment non-DEV.
+
+**Temuan ENV-02 — Worker environment STAGING/PROD belum aktif di file konfigurasi.** wrangler.toml saat ini berisi satu [vars] default yang menunjuk ke satu GAS_URL dan daftar origin. Blok STAGING/PROD masih komentar contoh. Belum dapat disimpulkan apakah deployment terpisah sudah dikonfigurasi di dashboard Cloudflare; bukti tersebut tidak tersedia di repo.
+
+**Temuan ENV-03 — setupDatabase() berpotensi membuat database baru setiap kali dijalankan.** Fungsi langsung membuat spreadsheet baru dan mengubah CCMS_SPREADSHEET_ID ke ID yang baru. Tidak terlihat guard yang menolak setup kedua atau meminta konfirmasi eksplisit. Jika dijalankan ulang pada project yang sama, database sebelumnya dapat menjadi orphan dan aplikasi berpindah ke spreadsheet baru.
+
+### 14.2 Database dan konsistensi data
+
+| Kebutuhan BRD / roadmap / data dictionary | Hasil source | Status |
+|---|---|---|
+| Database awal Google Sheets | Db.spreadsheet() membuka spreadsheet dari Script Properties | Sesuai — struktur |
+| Delapan sheet inti Tahap 1 | SetupDatabase.gs membuat CONFIG, PUBLIC_MENU, USERS, ROLES, PERMISSIONS, USER_ROLES, AUDIT_LOG, LOGIN_ATTEMPTS | Sesuai — seed structure |
+| ID record tidak bergantung nomor baris | Db.newId() menggunakan timestamp base36 dan dua karakter acak | Sebagian — format independen dari row, tetapi perlu evaluasi collision |
+| Semua mutasi memakai LockService | Db.write() memperoleh ScriptLock dan release dalam finally | Sesuai — untuk operasi yang melewati wrapper |
+| Validasi backend sebelum write | Validasi ada pada sebagian handler; Db.write() sendiri tidak memvalidasi schema, FK, uniqueness, atau business rules | Sebagian / Gap |
+| Update mempertahankan field yang tidak dikirim | Db.write() merge row existing dengan object update | Sesuai — source |
+| Penulisan batch | Append menggunakan setValues batch; update melakukan baca/tulis per row dalam loop | Sebagian — update belum optimal untuk batch besar |
+| Integritas relasi user-role | assignRolesByCode() mengecek role ID dan menghindari duplikasi sederhana; role tidak dikenal diabaikan | Sebagian / Gap |
+| Audit log append-only | Audit module menyediakan append log, tetapi audit seluruh jalur mutasi belum dibuktikan | Implemented — Verification Required |
+| Backup dan recovery | Belum ditemukan bukti backup terjadwal dan restore drill pada Tahap 1 | Not Found / Deferred sesuai roadmap Tahap 3 |
+
+**Temuan DB-01 — LockService tersedia, tetapi bukan pengganti validasi.** Db.write() mengunci operasi append/update. Namun wrapper tersebut tidak memvalidasi header, tipe data, field wajib, foreign key, atau aturan bisnis secara generik. Validasi harus tetap diterapkan di handler/backend sebelum penulisan.
+
+**Temuan DB-02 — Update row dilakukan satu per satu.** Operasi append sudah menggunakan satu setValues untuk seluruh record baru. Operasi update membaca dan menulis setiap row di dalam loop. Lock tetap menahan konkurensi, tetapi banyak operasi update dapat meningkatkan waktu eksekusi dan konsumsi kuota Apps Script.
+
+**Temuan DB-03 — Tidak ada transaksi database lintas operasi.** Db.write() mengunci satu pemanggilan untuk satu sheet; operasi lintas beberapa sheet pada handler (contoh membuat user lalu assign role) bukan satu transaksi atomik. Jika tahap pertama berhasil dan tahap kedua gagal, data dapat tertinggal dalam keadaan parsial. Perlu desain kompensasi/validasi atau mekanisme operasi yang dapat dipulihkan.
+
+**Temuan DB-04 — Setup ulang berisiko mengganti pointer database.** Setiap setupDatabase() membuat spreadsheet baru dan menyimpan ID baru ke Script Properties. Tidak terlihat mekanisme idempotency, pemeriksaan database existing, atau mode dry-run.
+
+**Temuan DB-05 — Pembangkitan ID menggunakan sumber acak non-kriptografis.** Db.newId() memakai timestamp ditambah dua karakter Math.random(). ID tidak harus menjadi rahasia, tetapi ruang acak hanya 1.296 kemungkinan per timestamp yang sama; collision handling/unique constraint perlu dipertimbangkan terutama saat request bersamaan. Gunakan ID yang lebih kuat dan tangani collision di backend.
+
+### 14.3 Pemeriksaan Worker/API gateway yang relevan dengan environment
+
+| Area | Temuan source | Penilaian |
+|---|---|---|
+| CORS allowlist | Worker membandingkan Origin dengan ALLOWED_ORIGINS; origin yang tidak cocok tidak memperoleh origin yang diizinkan | Implemented — Runtime Verification Required |
+| OPTIONS preflight | Worker mengembalikan 204 dan header CORS | Implemented — perlu tes browser |
+| Metode HTTP | Hanya GET/POST selain OPTIONS diterima | Sesuai — source |
+| Request JSON | POST body harus JSON dan action string | Sesuai — validasi bentuk dasar |
+| Timeout upstream | AbortController timeout 55 detik | Implemented — perlu uji timeout; timer dibersihkan setelah fetch header diterima sehingga pembacaan body JSON perlu ditinjau terpisah |
+| Cache publik | Hanya public.info/public.page tanpa token; TTL 60 detik | Implemented — perlu uji isolasi cache dan invalidasi |
+| Cache privat | Response action non-cacheable diberi no-store | Sesuai — source |
+| Secret/API key | GAS_URL berada di vars Wrangler; tidak terlihat Gemini API key di frontend/repo dari file yang diperiksa | Perlu verifikasi secret Cloudflare/Script Properties di runtime |
+
+### 14.4 Rekomendasi prioritas
+
+1. Buat konfigurasi environment yang eksplisit dan tidak bergantung pada edit manual konstanta di source. Nama spreadsheet, folder Drive, GAS deployment, Worker, dan origin harus berasal dari environment yang dipilih.
+2. Tambahkan guard setup: jika CCMS_SPREADSHEET_ID sudah terisi, setup harus berhenti secara default. Sediakan prosedur reset/recreate yang memerlukan tindakan eksplisit dan mencatat ID lama/baru.
+3. Buat environment manifest (tanpa secret) yang mencatat nama project, GAS deployment alias, Worker, Pages origin, Spreadsheet ID fingerprint/label, dan folder Drive untuk masing-masing environment.
+4. Uji bahwa DEV hanya menunjuk database DEV, STAGING hanya database STAGING, dan PROD hanya database PROD. Jangan memakai data produksi untuk pengujian.
+5. Terapkan validasi schema dan relasi pada backend sebelum semua write; tambahkan uniqueness check yang aman terhadap konkurensi.
+6. Evaluasi pola update batch dan penanganan kegagalan parsial lintas sheet.
+7. Tingkatkan strategi ID dan tangani collision secara eksplisit.
+8. Simpan bukti backup/restore saat cakupan roadmap Tahap 3 dijalankan; jangan menyatakan backup production sudah teruji tanpa recovery drill.
+
+### 14.5 Acceptance criteria environment/database Tahap 1
+
+- [ ] DEV, STAGING, PROD memiliki Worker, Apps Script project/deployment, Spreadsheet, Drive folder, dan origin yang terpisah.
+- [ ] Konfigurasi STAGING/PROD benar-benar aktif, bukan sekadar komentar contoh.
+- [ ] SetupDatabase menolak eksekusi ulang yang berisiko membuat database baru tanpa persetujuan eksplisit.
+- [ ] Uji pemetaan environment membuktikan tidak ada koneksi silang.
+- [ ] Semua jalur mutasi repository menggunakan wrapper LockService atau memiliki alasan pengecualian yang terdokumentasi.
+- [ ] Validasi backend mencakup tipe data, field wajib, referensi relasi, dan keunikan sebelum write.
+- [ ] Uji concurrency dan kegagalan parsial disimpan sebagai bukti.
+- [ ] Uji backup/restore dilaksanakan sesuai tahap roadmap yang ditetapkan; statusnya tidak boleh diasumsikan selesai hanya dari dokumentasi.
+
+Audit ini berdasarkan source dan dokumentasi repository. Tidak ada database, Script Properties, konfigurasi Worker, atau data production yang diubah selama pemeriksaan.
