@@ -109,6 +109,7 @@ function setupDatabase() {
   createSheet(ss, 'USER_ROLES', ['user_role_id', 'user_id', 'role_id', 'assigned_at', 'assigned_by'], []);
   createSheet(ss, 'AUDIT_LOG', ['audit_id', 'timestamp', 'session_id', 'user_id', 'username', 'action', 'module', 'record_type', 'record_id', 'detail', 'ip_address'], []);
   createSheet(ss, 'LOGIN_ATTEMPTS', ['attempt_id', 'timestamp', 'username', 'success', 'failure_reason', 'ip_address', 'user_agent'], []);
+  createSheet(ss, 'REVOKED_SESSIONS', ['session_id', 'user_id', 'revoked_at', 'expires_at'], []);
 
   // Script Properties: simpan pointer database untuk environment project ini.
   props.setProperty('CCMS_SPREADSHEET_ID', ss.getId());
