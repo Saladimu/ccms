@@ -2,7 +2,7 @@
  * SetupDatabase — dijalankan SEKALI per environment dari editor Apps Script.
  *
  * Fungsi:
- *  1. Membuat spreadsheet CCMS-<ENV>-DB dengan 8 sheet Tahap 1 + header + seed.
+ *  1. Membuat spreadsheet CCMS-<ENV>-DB dengan 9 sheet Tahap 1 + header + seed.
  *  2. Menghasilkan SESSION_SECRET dan menyimpan CCMS_SPREADSHEET_ID ke Script Properties.
  *  3. Membuat akun Super Admin awal (username: admin, password: dicetak di log).
  *  4. Mencetak langkah berikutnya di log.
