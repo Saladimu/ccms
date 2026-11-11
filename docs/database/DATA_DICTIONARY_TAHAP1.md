@@ -131,7 +131,7 @@ Akun login internal (pengurus/petugas). **Terpisah** dari data jemaat.
 |---|---|---|---|
 | `user_id` | STRING | Ya | ID unik, prefix `USR`. |
 | `username` | STRING | Ya | Unik, 3–32 karakter, `[a-z0-9._]`, lowercase. |
-| `password_hash` | STRING | Ya | Format `sha256$<iterasi>$<salt-hex>$<hash-hex>`. Lihat aturan hashing di bawah. |
+| `password_hash` | STRING | Ya | Format baru `pbkdf2-sha256$<iterasi>$<salt-hex>$<hash-hex>`; hash lama `sha256$...` hanya diterima untuk verifikasi dan di-upgrade setelah login sukses. |
 | `full_name` | STRING | Ya | Nama lengkap. |
 | `email` | STRING | Tidak | Email kontak (untuk notifikasi, bukan login). |
 | `phone` | STRING | Tidak | — |
@@ -154,6 +154,17 @@ Unik: `username`.
 - Hash disimpan sebagai hex lowercase.
 - Password minimal 8 karakter (wajib huruf + angka); verifikasi dilakukan di backend saat create/reset.
 - Password tidak pernah disimpan/dikirim dalam bentuk plaintext; endpoint login hanya mengembalikan status sukses/gagal.
+
+---
+
+### Aturan password hashing dan migrasi
+
+- Hash baru memakai PBKDF2-HMAC-SHA256 dengan salt acak 16 byte (hex 32 karakter) dan baseline 120.000 iterasi.
+- Format penyimpanan: `pbkdf2-sha256$120000$<salt-hex>$<derived-key-hex>`.
+- Verifikasi hash legacy `sha256$<iterasi>$<salt-hex>$<hash-hex>` hanya untuk kompatibilitas akun existing; setelah login sukses hash ditulis ulang ke format PBKDF2.
+- Hash malformed, algoritma tidak dikenal, atau parameter iterasi di luar batas ditolak.
+- Runtime benchmark pada Apps Script wajib dilakukan sebelum rilis. Jika proses hash/verify terlalu lambat atau timeout, hentikan rilis dan evaluasi arsitektur KDF; jangan menurunkan iterasi tanpa keputusan keamanan.
+- Password plaintext tidak boleh ditulis ke log, audit, atau response API.
 
 ---
 
