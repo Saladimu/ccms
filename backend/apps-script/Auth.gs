@@ -98,6 +98,10 @@ var Auth = (function () {
     if (!activeUser || !(activeUser.is_active === true || String(activeUser.is_active).toUpperCase() === 'TRUE')) {
       throw new AppError('UNAUTHORIZED', 'Akun tidak aktif atau tidak ditemukan.', 401);
     }
+    var activeAccess = getUserRolesAndPermissions(payload.sub);
+    if (!activeAccess.roles.length) {
+      throw new AppError('UNAUTHORIZED', 'Akun tidak memiliki role aktif. Hubungi Super Admin.', 401);
+    }
 
     // Logout revocation is enforced server-side. Legacy JWTs without jti are
     // assigned a deterministic ID from their signed token during transition.
